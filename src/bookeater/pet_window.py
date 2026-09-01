@@ -12,6 +12,7 @@ import uuid
 from typing import Callable
 
 from .game.loop import FeedOutcome
+from .pet_art import PetPalette
 from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime
 
 
@@ -26,6 +27,7 @@ class DesktopPetWindow:
         self.tk = tk
         self.ttk = ttk
         self.runtime = runtime
+        self.palette = PetPalette()
         self.root = tk.Tk()
         self.root.title('책먹는 몬스터')
         self.root.geometry('190x190+80+80')
@@ -35,7 +37,6 @@ class DesktopPetWindow:
         try:
             self.root.wm_attributes('-transparentcolor', _TRANSPARENT)
         except tk.TclError:
-            # Non-Windows fallback used by development environments.
             self.root.attributes('-alpha', 0.98)
 
         self.canvas = tk.Canvas(
@@ -107,11 +108,11 @@ class DesktopPetWindow:
             squash = 0
         y = 90 + bob
 
-        outline = '#29241f'
-        paper = '#f4edda'
-        shadow = '#ded3ba'
-        ink = '#25211e'
-        bookmark = '#b95f55'
+        outline = self.palette.outline
+        paper = self.palette.paper
+        shadow = self.palette.paper_shadow
+        ink = self.palette.ink
+        bookmark = self.palette.bookmark
 
         c.create_oval(x-47, 151, x+47, 160, fill='#d8d2c8', outline='')
         c.create_oval(x-30, y+39, x-10, y+53, fill=shadow, outline=outline, width=2)
@@ -170,27 +171,26 @@ class DesktopPetWindow:
         ttk.Entry(body, textvariable=author_var, width=36).grid(row=3, column=0, columnspan=2, sticky='ew', pady=(3, 8))
         ttk.Label(body, textvariable=msg).grid(row=4, column=0, columnspan=2, sticky='w')
 
+        def finish(book_id: str) -> None:
+            win.destroy()
+            if on_saved:
+                on_saved(book_id)
+
         def save() -> None:
             title = title_var.get().strip()
             author = author_var.get().strip()
             if not title:
                 msg.set('책 제목을 입력해 주세요.')
                 return
-            # Avoid accidental duplicate manual registration when the same title/author is already
-            # present. Same-title books with different known authors remain separate.
             for existing in self.runtime.journal.list_books(limit=200):
                 title_same = existing.title.strip().casefold() == title.casefold()
                 author_same = existing.author.strip().casefold() == author.casefold()
                 if title_same and (author_same or not author):
-                    if on_saved:
-                        on_saved(existing.book_id)
-                    win.destroy()
+                    finish(existing.book_id)
                     return
             book_id = uuid.uuid4().hex
             self.runtime.journal.add_book(book_id, title, author=author)
-            if on_saved:
-                on_saved(book_id)
-            win.destroy()
+            finish(book_id)
 
         ttk.Button(body, text='등록', command=save).grid(row=5, column=1, sticky='e', pady=(8, 0))
         title_entry.focus_set()
@@ -216,7 +216,19 @@ class DesktopPetWindow:
         book_var = tk.StringVar(value=books[0].display_name)
         combo = ttk.Combobox(body, textvariable=book_var, state='readonly', values=[b.display_name for b in books])
         combo.pack(fill='x', pady=(4, 8))
-        ttk.Button(body, text='새 책 등록', command=lambda: self._register_book_dialog()).pack(anchor='e')
+
+        def select_registered_book(book_id: str) -> None:
+            fresh = self._recent_books()
+            combo.configure(values=[b.display_name for b in fresh])
+            selected = next((b.display_name for b in fresh if b.book_id == book_id), None)
+            if selected:
+                book_var.set(selected)
+
+        ttk.Button(
+            body,
+            text='새 책 등록',
+            command=lambda: self._register_book_dialog(on_saved=select_registered_book),
+        ).pack(anchor='e')
 
         row = ttk.Frame(body)
         row.pack(fill='x', pady=(8, 0))
