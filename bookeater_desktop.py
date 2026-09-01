@@ -22,7 +22,10 @@ def _smoke() -> int:
         'analysis_is_mapping': isinstance(analysis, dict),
         'species': view.species,
     }
-    print(json.dumps(payload, ensure_ascii=False))
+    # PyInstaller uses the windowed bootloader for the real desktop app. On a Windows CI runner,
+    # inherited stdout can therefore fall back to a legacy code page. Keep the smoke payload ASCII
+    # so Korean species names cannot turn an otherwise healthy packaged runtime into a false failure.
+    print(json.dumps(payload, ensure_ascii=True))
     return 0 if all((payload['db_ok'], payload['model_loaded'], payload['analysis_is_mapping'])) else 3
 
 
