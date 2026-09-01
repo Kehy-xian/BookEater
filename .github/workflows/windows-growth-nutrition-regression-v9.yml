@@ -23,7 +23,7 @@ jobs:
           $src = Get-Content -Raw -Encoding utf8 ci/growth_nutrition_blind_v9.py
           $src = $src.Replace("assert NUTRITION_POLICY_VERSION == FROZEN_POLICY, (", "assert True, (")
           $src = $src.Replace("# BookEater hidden growth fresh blind v9", "# BookEater hidden growth regression v9")
-          $src = $src.Replace("f'- sealed growth projector: `{FROZEN_POLICY}`'", "f'- authoring policy: `{FROZEN_POLICY}`; regression projector: `{NUTRITION_POLICY_VERSION}`'")
+          $src = $src.Replace('f''- sealed growth projector: `{FROZEN_POLICY}`''', 'f''- authoring policy: `{FROZEN_POLICY}`; regression projector: `{NUTRITION_POLICY_VERSION}`''')
           Set-Content -Encoding utf8 ci/growth_nutrition_regression_v9_runtime.py $src
       - id: regression
         name: Run v9 regression with current projector
