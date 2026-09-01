@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Build outputs
+build/temp/
+dist/
+*.spec.bak
+
+# Local user data
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+logs/
+updates/
+backups/
+
+# Bundled/downloaded model binaries (CI fetches them)
+resources/models/multilingual-e5-small-onnx/*.onnx
+resources/models/multilingual-e5-small-onnx/tokenizer.json
+
+# Secrets / local config
+.env
+.env.*
+cloudflare/wrangler.toml
+!cloudflare/wrangler.toml.example
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
