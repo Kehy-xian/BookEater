@@ -6,6 +6,7 @@ export interface Env {
 type Json = Record<string, unknown>;
 const RESPONSE = new Set(["사유","탐구","감정","감각"]);
 const WORLD = new Set(["상상","모험","자연","사회","어둠"]);
+const FEEDBACK = new Set(["","odd","fine"]);
 const RETENTION_DAYS = 180;
 const LIST_TYPES = new Set(["Bestseller","ItemNewAll","ItemNewSpecial","ItemEditorChoice","BlogBest"]);
 
@@ -51,19 +52,33 @@ async function receiveImprovement(req: Request, env: Env): Promise<Response> {
 
   const predictedResponse = compactLabels(p.predicted_response, RESPONSE);
   const predictedWorld = compactLabels(p.predicted_world, WORLD);
-  const correctedResponse = compactLabels(p.corrected_response, RESPONSE);
-  const correctedWorld = compactLabels(p.corrected_world, WORLD);
-  const corrected = JSON.stringify(predictedResponse) !== JSON.stringify(correctedResponse) || JSON.stringify(predictedWorld) !== JSON.stringify(correctedWorld);
+  const correctionProvided = p.correction_provided === true;
+  const correctedResponse = correctionProvided ? compactLabels(p.corrected_response, RESPONSE) : [];
+  const correctedWorld = correctionProvided ? compactLabels(p.corrected_world, WORLD) : [];
+  const feedbackSignal = safeText(p.feedback_signal, 16);
+  if (!FEEDBACK.has(feedbackSignal)) return json({error:"invalid_feedback"}, 400);
+
+  // IMPORTANT: an omitted correction is not an empty-label correction.
+  // Normal players never see internal trait labels. They may only flag a growth reaction as odd.
+  // Explicit label corrections are reserved for developer/research tooling.
+  const correctionChanged = correctionProvided && (
+    JSON.stringify(predictedResponse) !== JSON.stringify(correctedResponse) ||
+    JSON.stringify(predictedWorld) !== JSON.stringify(correctedWorld)
+  );
   const uncertainty = Number(p.model_confidence ?? 1);
-  if (!corrected && Number.isFinite(uncertainty) && uncertainty >= 0.72) return json({accepted:false, reason:"not_needed"}, 202);
+  const uncertain = Number.isFinite(uncertainty) && uncertainty < 0.72;
+  const userFlaggedOdd = feedbackSignal === "odd";
+  if (!correctionChanged && !uncertain && !userFlaggedOdd) return json({accepted:false, reason:"not_needed"}, 202);
 
   const contributorHash = await sha256(contributorId); const textHash = await sha256(text);
   await env.DB.prepare(`INSERT OR IGNORE INTO improvement_examples
-    (example_id,created_at,app_version,contributor_hash,text_hash,record_text,predicted_response,predicted_world,corrected_response,corrected_world,auxiliary_tags,model_backend,model_confidence,consent_version)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    (example_id,created_at,app_version,contributor_hash,text_hash,record_text,predicted_response,predicted_world,
+     corrected_response,corrected_world,correction_provided,feedback_signal,auxiliary_tags,model_backend,model_confidence,consent_version)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .bind(exampleId,safeText(p.created_at,64),appVersion,contributorHash,textHash,text,
       JSON.stringify(predictedResponse),JSON.stringify(predictedWorld),JSON.stringify(correctedResponse),JSON.stringify(correctedWorld),
-      JSON.stringify(compactTags(p.auxiliary_tags)),model,Number.isFinite(uncertainty)?Math.max(0,Math.min(1,uncertainty)):null,consent).run();
+      correctionProvided?1:0,feedbackSignal,JSON.stringify(compactTags(p.auxiliary_tags)),model,
+      Number.isFinite(uncertainty)?Math.max(0,Math.min(1,uncertainty)):null,consent).run();
   return json({accepted:true, example_id:exampleId}, 202);
 }
 
