@@ -15,6 +15,12 @@ def test_near_null_response_does_not_feed_growth():
     assert n.response=={}
 
 
+def test_anchored_human_emotion_can_survive_small_null_margin():
+    a=_analysis(response=['감정'],scores={'감정':.853},rn=.84)
+    n=project_growth_nutrition('88쪽에서 언니의 행동이 너무 속상했다.',a)
+    assert n.response=={'감정':1.0}
+
+
 def test_strong_response_signal_feeds_primary_trait():
     a=_analysis(response=['사유'],scores={'사유':.91},rn=.84)
     n=project_growth_nutrition('결말의 선택이 옳았는지 오래 생각했다.',a)
@@ -40,7 +46,7 @@ def test_metadata_word_does_not_veto_substantive_reflection():
 
 
 def test_weak_semantic_world_guess_is_ignored():
-    a=_analysis(world=['상상'],scores={'상상':.87},wn=.84,evidence={'상상':0})
+    a=_analysis(world=['상상'],scores={'상상':.89},wn=.84,evidence={'상상':0})
     n=project_growth_nutrition('결말이 행복하다고 말할 수 있는지 생각했다.',a)
     assert n.world=={}
 
@@ -76,16 +82,41 @@ def test_negated_world_anchor_is_rejected():
     assert n.world=={}
 
 
-def test_hangul_substring_cannot_fake_nature_anchor():
-    a=_analysis(world=['자연'],scores={'자연':.87},wn=.84)
-    n=project_growth_nutrition('그 규칙이 우습지만 동시에 조금 불편했다.',a)
+def test_hangul_substring_cannot_fake_nature_anchor_or_fallback():
+    a=_analysis(world=['자연'],scores={'자연':.89},wn=.84)
+    n=project_growth_nutrition('그 설명이 조금 우습지만 예시는 명확했다.',a)
     assert n.world=={}
 
 
 def test_method_word_cannot_fake_social_law_anchor():
-    a=_analysis(world=['사회'],scores={'사회':.87},wn=.84)
+    a=_analysis(world=['사회'],scores={'사회':.89},wn=.84)
     n=project_growth_nutrition('계산 방법을 차근차근 설명한 부분이 이해하기 쉬웠다.',a)
     assert n.world=={}
+
+
+def test_visual_flower_surface_does_not_create_nature_modifier():
+    a=_analysis(response=['감각'],world=['자연'],scores={'감각':.92,'자연':.91},rn=.84,wn=.84)
+    n=project_growth_nutrition('표지의 꽃무늬와 금색 글자가 잘 어울려 디자인이 예뻤다.',a)
+    assert n.response=={'감각':1.0}
+    assert n.world=={}
+
+
+def test_visual_sea_color_does_not_create_nature_modifier():
+    a=_analysis(response=['감각'],world=['자연'],scores={'감각':.92,'자연':.91},rn=.84,wn=.84)
+    n=project_growth_nutrition('삽화 속 바다색 배경과 주황색 글씨의 대비가 인상적이었다.',a)
+    assert n.world=={}
+
+
+def test_visual_surface_can_keep_real_world_content_when_topic_is_explicit():
+    a=_analysis(response=['감각'],world=['자연'],scores={'감각':.92,'자연':.90},rn=.84,wn=.84)
+    n=project_growth_nutrition('삽화의 색도 아름다웠지만 산불 뒤 숲의 생태가 회복되는 내용이 더 인상적이었다.',a)
+    assert n.world=={'자연':1.0}
+
+
+def test_anchor_can_recover_world_modifier_omitted_from_classifier_shortlist():
+    a=_analysis(world=['어둠'],scores={'어둠':.90,'사회':.88},wn=.84)
+    n=project_growth_nutrition('감시가 이어지는 도시에서 투표 제도까지 점수로 통제되는 설정이 섬뜩했다.',a)
+    assert '사회' in n.world
 
 
 def test_strong_literal_world_signal_can_feed_growth():
