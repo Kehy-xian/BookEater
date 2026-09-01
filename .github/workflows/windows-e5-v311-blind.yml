@@ -7,6 +7,7 @@ on:
       - 'src/bookeater/nlp/hybrid_classifier_v3.py'
       - 'src/bookeater/nlp/hybrid_classifier_v31.py'
       - 'ci/e5_v311_blind_validation.py'
+      - 'ci/e5_v311_blind_runner.py'
       - '.github/workflows/windows-e5-v311-blind.yml'
 jobs:
   validate:
@@ -21,12 +22,12 @@ jobs:
       - run: python -m pip install -r requirements-local-nlp.txt
       - run: python tools/fetch_e5_model.py
       - id: blind
-        name: Run blind v3.1.1 validation
+        name: Run frozen 66-case v3.1.1 validation
         shell: pwsh
         continue-on-error: true
         run: |
           New-Item -ItemType Directory -Force tests | Out-Null
-          python ci/e5_v311_blind_validation.py 2>&1 | Tee-Object -FilePath tests/e5_v311_blind_console.txt
+          python ci/e5_v311_blind_runner.py 2>&1 | Tee-Object -FilePath tests/e5_v311_blind_console.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Print diagnostics
         if: always()
