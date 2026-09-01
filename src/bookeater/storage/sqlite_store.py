@@ -199,6 +199,20 @@ class SQLiteGameStore:
         finally:
             con.close()
 
+    def pending_feed_ids(self, *, limit: int = 50) -> list[str]:
+        if limit <= 0:
+            return []
+        con = self._connect()
+        try:
+            rows = con.execute(
+                "SELECT feed_id FROM reading_entries WHERE status='pending' "
+                'ORDER BY created_at, rowid LIMIT ?',
+                (max(0, int(limit)),),
+            ).fetchall()
+            return [str(row['feed_id']) for row in rows]
+        finally:
+            con.close()
+
     def mark_pending_error(self, feed_id: str, error_code: str) -> None:
         # Technical details stay local and bounded. Ordinary UI never reads last_error.
         code = str(error_code or 'analysis_error')[:120]
