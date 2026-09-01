@@ -1,0 +1,41 @@
+name: windows-package-smoke
+on:
+  workflow_dispatch:
+  push:
+    branches: [sprint-04-play-loop]
+    paths:
+      - '.github/workflows/windows-package-smoke.yml'
+jobs:
+  build-smoke:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: 'utf-8'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Install build dependencies
+        run: python -m pip install -r requirements-build.txt
+      - name: Fetch bundled local model
+        run: python tools/fetch_e5_model.py
+      - name: Build one-folder desktop app
+        run: pyinstaller --noconfirm --clean BookEater.spec
+      - name: Verify packaged resources
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'dist/BookEater/BookEater.exe')) { throw 'BookEater.exe missing' }
+          $onnx = Get-ChildItem 'dist/BookEater' -Recurse -Filter model.onnx | Select-Object -First 1
+          $tok = Get-ChildItem 'dist/BookEater' -Recurse -Filter tokenizer.json | Select-Object -First 1
+          if (-not $onnx) { throw 'bundled model.onnx missing' }
+          if (-not $tok) { throw 'bundled tokenizer.json missing' }
+          Write-Host "EXE bytes=$((Get-Item 'dist/BookEater/BookEater.exe').Length)"
+          Write-Host "bundle MB=$([math]::Round(((Get-ChildItem 'dist/BookEater' -Recurse -File | Measure-Object Length -Sum).Sum / 1MB),1))"
+      - name: Headless packaged-runtime smoke
+        shell: pwsh
+        run: |
+          $env:BOOKEATER_DATA_DIR = Join-Path $env:RUNNER_TEMP 'bookeater-package-smoke-data'
+          & 'dist/BookEater/BookEater.exe' --smoke
+          if ($LASTEXITCODE -ne 0) { throw "packaged smoke exit=$LASTEXITCODE" }
+          if (-not (Test-Path (Join-Path $env:BOOKEATER_DATA_DIR 'bookeater.sqlite3'))) { throw 'packaged SQLite DB was not created' }
+          Write-Host 'PACKAGED_WINDOWS_SMOKE_OK'
