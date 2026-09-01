@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 from .hybrid_classifier_v3 import HybridE5ClassifierV3, RESPONSE, WORLD
 
-MODEL_VERSION='e5-hybrid-v3.1'
+MODEL_VERSION='e5-hybrid-v3.1.1'
 EXTRA_LEX={
  '사유':[r'불공평',r'배제',r'규칙의 범위',r'불리하게 작동',r'같은 규칙'],
  '감정':[r'읽고 싶',r'어색하게 느',r'마음에 남',r'열기',r'씁쓸'],
@@ -28,14 +28,28 @@ class HybridE5ClassifierV31(HybridE5ClassifierV3):
         }
         for t,texts in add.items():
             new=self._encode(['passage: '+x for x in texts]);self.prototypes[t]=np.vstack([self.prototypes[t],new])
-        # Abstract ethical harm is not automatically a social-world theme.
-        extra_counter=self._encode(['passage: 좋은 의도와 상처와 책임의 윤리 문제를 개인 차원에서 생각했다'])
-        self.counters['사회']=np.vstack([self.counters['사회'],extra_counter])
+        # Abstract ethical harm is not automatically a social/dark-world theme.
+        ethical=self._encode([
+          'passage: 좋은 의도와 상처와 책임의 윤리 문제를 개인 차원에서 생각했다',
+          'passage: 상대에게 상처를 주었을 때 책임이 있는지 생각하는 개인 윤리 문제였다'
+        ])
+        self.counters['사회']=np.vstack([self.counters['사회'],ethical])
+        self.counters['어둠']=np.vstack([self.counters['어둠'],ethical])
 
     @staticmethod
     def _hits(text:str,trait:str)->int:
         base=HybridE5ClassifierV3._hits(text,trait)
+        # '상처' is often metaphorical/ethical, so it is not sufficient dark-world lexical evidence by itself.
+        if trait=='어둠' and re.search(r'상처',text) and not re.search(r'죽|폭력|학대|피|공포|전쟁|억압|감시|고립|소외|사라|무서|섬뜩|재난|격리',text):
+            base=max(0,base-1)
         return base+sum(bool(re.search(p,text)) for p in EXTRA_LEX.get(trait,()))
+
+    def _adjust(self,text,raw,counter):
+        out,hits=super()._adjust(text,raw,counter)
+        # Explicit ethical-question context gets a small extra dark penalty; this is a false-positive guard, not a new label rule.
+        if re.search(r'상처',text) and re.search(r'책임|의도|옳|잘못',text) and not re.search(r'죽|폭력|공포|전쟁|억압|감시|고립|소외|사라|무서|섬뜩',text):
+            out['어둠']-=.055
+        return out,hits
 
     def _classify_response(self,scores,null,hits):
         vals=sorted(((scores[t],t) for t in RESPONSE),reverse=True);top,trait=vals[0];n=null['response']
@@ -44,7 +58,6 @@ class HybridE5ClassifierV31(HybridE5ClassifierV3):
         selected=[trait]
         for v,t in vals[1:]:
             if hits[t]>=1 and v>=max(.660,n-.005,top-.085):selected.append(t)
-            # Semantic-only second response must be nearly tied to top to prevent random 탐구/감각 additions.
             elif hits[t]==0 and v>=max(.735,n+.022,top-.010):selected.append(t)
         return selected[:2]
 
@@ -60,7 +73,6 @@ class HybridE5ClassifierV31(HybridE5ClassifierV3):
         for v,t in vals[1:]:
             m=v-n;cg=v-counter[t]
             if hits[t]>=1 and v>=.750 and m>=-.025 and v>=top-.125:selected.append(t)
-            # Semantic-only world secondaries are useful but were the largest source of false 모험/상상.
             elif hits[t]==0 and v>=.855 and m>=.025 and cg>=-.015 and v>=top-.012:selected.append(t)
         return selected[:4]
 
