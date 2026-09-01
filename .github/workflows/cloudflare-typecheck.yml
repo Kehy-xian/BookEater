@@ -1,0 +1,27 @@
+name: cloudflare-typecheck
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - sprint-03-hybrid-nlp
+    paths:
+      - 'cloudflare/**'
+      - '.github/workflows/cloudflare-typecheck.yml'
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: cloudflare/package.json
+      - name: Install dependencies
+        run: npm install
+      - name: Typecheck Worker
+        run: npm run typecheck
