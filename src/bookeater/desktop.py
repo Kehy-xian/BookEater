@@ -120,7 +120,6 @@ class DesktopApp:
         c.delete('pet')
         w = max(c.winfo_width(), 300)
         x, y = w / 2, 72
-        # No fixed colors: use Tk theme-ish defaults and simple line art.
         c.create_oval(x-52, y-48, x+52, y+48, width=3, tags='pet')
         c.create_oval(x-21, y-12, x-14, y-5, fill='black', tags='pet')
         c.create_oval(x+14, y-12, x+21, y-5, fill='black', tags='pet')
@@ -192,9 +191,11 @@ class DesktopApp:
         if outcome.growth is not None:
             self._render_growth(outcome.growth)
         self.status_var.set(outcome.message)
-        if outcome.status == 'fed':
+        # ReadingFeedService is save-first. Both 'fed' and 'pending' therefore mean this exact
+        # text has already been persisted locally. Clear it to avoid a second click creating a
+        # second feed id for the same pending note; recovery will retry the saved record instead.
+        if outcome.status in {'fed', 'pending'}:
             self.note.delete('1.0', 'end')
-        # If pending, leave text visible so the user can see what was saved locally.
         self._set_busy(False)
 
     def _handle_recovery(self, outcomes: list[FeedOutcome]) -> None:
@@ -212,8 +213,6 @@ def run_desktop(*, runtime_factory: Callable[[], BookEaterRuntime] = bootstrap_r
     try:
         runtime = runtime_factory()
     except RuntimeStartupError:
-        # Import messagebox only after Tk is available; failing local storage is a hard stop because
-        # silently using a temporary DB could lose the user's reading history.
         import tkinter as tk
         from tkinter import messagebox
         root = tk.Tk(); root.withdraw()
