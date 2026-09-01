@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS improvement_examples (
   predicted_world TEXT NOT NULL DEFAULT '[]',
   corrected_response TEXT NOT NULL DEFAULT '[]',
   corrected_world TEXT NOT NULL DEFAULT '[]',
+  correction_provided INTEGER NOT NULL DEFAULT 0,
+  feedback_signal TEXT NOT NULL DEFAULT '',
   auxiliary_tags TEXT NOT NULL DEFAULT '[]',
   model_backend TEXT NOT NULL,
   model_confidence REAL,
@@ -21,7 +23,7 @@ CREATE INDEX IF NOT EXISTS idx_improvement_received_at ON improvement_examples(r
 CREATE INDEX IF NOT EXISTS idx_improvement_model_backend ON improvement_examples(model_backend);
 CREATE INDEX IF NOT EXISTS idx_improvement_contributor ON improvement_examples(contributor_hash);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_improvement_dedupe
-  ON improvement_examples(contributor_hash, text_hash, model_backend, corrected_response, corrected_world);
+  ON improvement_examples(contributor_hash, text_hash, model_backend, correction_provided, corrected_response, corrected_world, feedback_signal);
 
 -- Book-search caching intentionally does NOT use D1. The Worker Cache API holds short-lived provider responses,
 -- which keeps D1 writes/reads reserved for the small opt-in improvement corpus.
