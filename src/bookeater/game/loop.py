@@ -11,7 +11,12 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Protocol
 
 from .evolution import resolve_evolution
-from .nutrition import NUTRITION_POLICY_VERSION, apply_growth_nutrition, project_growth_nutrition
+from .nutrition import (
+    NUTRITION_POLICY_VERSION,
+    _bookkeeping_only,
+    apply_growth_nutrition,
+    project_growth_nutrition,
+)
 from .presentation import PublicGrowthView, generic_feed_line, public_growth_view
 from bookeater.storage.sqlite_store import RevisionConflict, SQLiteGameStore
 
@@ -41,7 +46,6 @@ class FeedOutcome:
         }
 
 
-
 def _growth_from_dict(data: Mapping[str, Any] | None) -> PublicGrowthView | None:
     if not isinstance(data, Mapping):
         return None
@@ -55,7 +59,6 @@ def _growth_from_dict(data: Mapping[str, Any] | None) -> PublicGrowthView | None
         )
     except (TypeError, ValueError):
         return None
-
 
 
 def outcome_from_public_dict(payload: Mapping[str, Any] | None) -> FeedOutcome | None:
@@ -114,7 +117,9 @@ class ReadingFeedService:
         for _ in range(self.max_revision_retries):
             state = self.store.load_state()
             next_stats = apply_growth_nutrition(state.stats, nutrition)
-            next_count = state.entry_count + 1
+            # A real reading response may be neutral/ambiguous and still age the creature, but
+            # pure bookkeeping such as ISBN, return date or reading-position notes must not.
+            next_count = state.entry_count + (0 if _bookkeeping_only(note.note_text) else 1)
             decision = resolve_evolution(next_stats, next_count, current_base=state.current_base)
             view = public_growth_view(decision, previous_stage=state.stage)
             outcome = FeedOutcome(
