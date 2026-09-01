@@ -13,7 +13,7 @@ from typing import Mapping, Any
 
 RESPONSE = ('사유','탐구','감정','감각')
 WORLD = ('상상','모험','자연','사회','어둠')
-NUTRITION_POLICY_VERSION = 'growth-nutrition-v1.6'
+NUTRITION_POLICY_VERSION = 'growth-nutrition-v1.6.1'
 
 RESPONSE_UNANCHORED_MARGIN = 0.035
 RESPONSE_ANCHORED_MARGIN = 0.010
@@ -37,7 +37,6 @@ SUBSTANTIVE_CUE = re.compile(
     r'기억났|기억에\s*남|해석|비교해|찾아보|찾아\s*보|확인해\s*보|확인하고\s*싶|계산해)'
 )
 
-# Anchors never assign a response trait by themselves. The semantic classifier must nominate it.
 RESPONSE_ANCHORS = {
     '사유': re.compile(r'(?:생각|고민|판단|정당|공정|옳|의미|책임|기준|배려|회피|의문)'),
     '탐구': re.compile(r'(?:원자료|연구\s*원문|찾아\s*보|찾아보|확인해\s*보|비교해|계산해|대조해|근거)'),
@@ -54,6 +53,12 @@ NAMING_OR_LABEL_CUE = re.compile(
 QUOTED_SPAN = re.compile(r'["“‘][^"”’\n]{1,60}["”’]')
 QUOTED_LABEL_CONTEXT = re.compile(
     r'["“‘][^"”’\n]{1,60}["”’].{0,35}(?:이름|제목|활동명|과목명|카드\s*이름|메뉴명|직업명|제품명|전시명|코너명)'
+)
+# Unquoted labels such as "마법이라는 이름의 디저트" need the same protection as quoted labels.
+# Strip only the short value + "이라는/라는 이름/제목" phrase for the content check; do not
+# suppress a later genuine world topic in the same note.
+UNQUOTED_LABEL_VALUE = re.compile(
+    r'(?<!\S)[가-힣A-Za-z0-9_-]{1,24}(?:이라는|라는)\s*(?:이름|제목)(?:의)?'
 )
 METAPHOR_CUE = re.compile(r'(?:처럼|듯|비유|표현)')
 IMAGINATION_METAPHOR_CUE = re.compile(r'시간.{0,12}멈[^.!?\n]{0,12}(?:것\s*같|듯)')
@@ -72,8 +77,6 @@ WORLD_CONTENT_CUE = re.compile(
     r'기억.{0,16}(?:사고팔|거래|팔\s*수|살\s*수|지우|삭제))'
 )
 
-# Negation guards target explicit meta-negation only. Broad patterns such as "노동 ... 휴가가 없다"
-# are intentionally avoided because absence of a right/benefit is itself social content.
 NEGATED_ANCHORS = {
     '상상': re.compile(r'(?<![가-힣])(?:마법|꿈|상상|시간여행|외계|가상).{0,12}(?:이야기|내용|설정|요소)?\s*(?:은|는|이|가)?\s*(?:아니|없(?:었|다|고))'),
     '모험': re.compile(r'(?<![가-힣])(?:여행|여정|항해|탐험).{0,12}(?:장면|내용|이야기|요소)?\s*(?:은|는|이|가)?\s*(?:아니|없(?:었|다|고))'),
@@ -128,11 +131,9 @@ def _label_only_context(text: str) -> bool:
     has_label = bool(NAMING_OR_LABEL_CUE.search(text) or QUOTED_LABEL_CONTEXT.search(text))
     if not has_label:
         return False
-    # Remove quoted labels before asking whether the rest of the note contains real world content.
-    # This prevents “전쟁의 신” (card name) from masquerading as an actual war theme while still
-    # allowing a note that mentions a title and then genuinely discusses war/climate/etc.
-    without_quotes = QUOTED_SPAN.sub(' ', text)
-    return not bool(WORLD_CONTENT_CUE.search(without_quotes))
+    without_labels = QUOTED_SPAN.sub(' ', text)
+    without_labels = UNQUOTED_LABEL_VALUE.sub(' ', without_labels)
+    return not bool(WORLD_CONTENT_CUE.search(without_labels))
 
 
 def project_growth_nutrition(text: str, analysis: Mapping[str, Any] | None) -> GrowthNutrition:
@@ -163,9 +164,6 @@ def project_growth_nutrition(text: str, analysis: Mapping[str, Any] | None) -> G
     metaphorical = bool(METAPHOR_CUE.search(text))
     visual_surface_only = bool(VISUAL_SURFACE_CUE.search(text)) and not bool(WORLD_CONTENT_CUE.search(text))
 
-    # Prefer structural traits explicitly nominated by the classifier when they also have direct
-    # content anchors. Next allow high-confidence predicted structural traits, then anchored
-    # recovery extras. This prevents a decorative nature word from displacing a predicted voyage.
     predicted_anchored = [
         trait for trait in predicted_w
         if trait in STRUCTURAL_WORLD
@@ -208,7 +206,6 @@ def project_growth_nutrition(text: str, analysis: Mapping[str, Any] | None) -> G
         if visual_surface_only:
             continue
         if trait == '상상' and IMAGINATION_METAPHOR_CUE.search(text):
-            # “시간이 멈춘 것 같다” is usually figurative grief, not literal time manipulation.
             continue
         if anchor:
             if margin < _required_world_anchor_margin(trait, text):
