@@ -19,6 +19,7 @@ from .game.loop import ReadingFeedService
 from .storage.sqlite_store import SQLiteGameStore
 from .storage.journal import ReadingJournalStore
 from .storage.milestones import MonsterMilestoneStore
+from .storage.encyclopedia import MonsterEncyclopediaStore
 
 APP_DIR_NAME = 'BookEater'
 DB_FILENAME = 'bookeater.sqlite3'
@@ -56,11 +57,9 @@ def resource_root(*, environ: dict[str,str] | None = None) -> Path:
     override = env.get('BOOKEATER_RESOURCE_ROOT')
     if override:
         return Path(override).expanduser()
-    # PyInstaller extracts one-file resources under _MEIPASS. Avoid importing PyInstaller.
     bundle = getattr(sys, '_MEIPASS', None)
     if bundle:
         return Path(bundle)
-    # src/bookeater/runtime.py -> repository/package root is two parents above src/bookeater.
     return Path(__file__).resolve().parents[2]
 
 
@@ -71,9 +70,6 @@ class LazyLocalAnalyzer:
         self.model_dir = Path(model_dir)
         self._classifier: Any | None = None
         self._failure: Exception | None = None
-        # Startup recovery and a user's first feed can happen almost simultaneously. Without a
-        # lock, both threads could initialize ONNX/tokenizer resources at once and waste memory or
-        # leave inconsistent cached failure state.
         self._load_lock = threading.Lock()
 
     @property
@@ -87,7 +83,6 @@ class LazyLocalAnalyzer:
             raise ModelUnavailable('local semantic model is unavailable') from self._failure
 
         with self._load_lock:
-            # Re-check after acquiring the lock because another analysis thread may have won.
             if self._classifier is not None:
                 return self._classifier
             if self._failure is not None:
@@ -97,8 +92,6 @@ class LazyLocalAnalyzer:
                 missing = [p.name for p in required if not p.is_file()]
                 if missing:
                     raise FileNotFoundError(', '.join(missing))
-                # Heavy optional dependencies are imported here so the UI can still start, save a
-                # note and present a recoverable pending state if packaging/model setup is broken.
                 from .nlp.hybrid_classifier_v31 import HybridE5ClassifierV31
                 self._classifier = HybridE5ClassifierV31(self.model_dir)
                 return self._classifier
@@ -110,7 +103,6 @@ class LazyLocalAnalyzer:
         return self._load().analyze(text)
 
     def reset_failure(self) -> None:
-        """Allow an explicit retry after resources have been repaired/reinstalled."""
         with self._load_lock:
             self._failure = None
 
@@ -123,6 +115,7 @@ class BookEaterRuntime:
     store: SQLiteGameStore
     journal: ReadingJournalStore
     milestones: MonsterMilestoneStore
+    encyclopedia: MonsterEncyclopediaStore
     analyzer: LazyLocalAnalyzer
     feed_service: ReadingFeedService
 
@@ -141,22 +134,19 @@ def bootstrap_runtime(
         data.mkdir(parents=True, exist_ok=True)
         if not data.is_dir():
             raise OSError('data path is not a directory')
-        # A tiny create/delete probe catches common installer/permissions failures before SQLite
-        # produces a less actionable error. Existing user data is never modified by this probe.
         probe = data / '.write-test'
         with probe.open('w', encoding='utf-8') as f:
             f.write('ok')
         probe.unlink(missing_ok=True)
         store = SQLiteGameStore(db_path)
-        # Journal tables live in the same local SQLite file but remain conceptually separate from
-        # monster internals. A single book can own any number of timestamped reading entries.
         journal = ReadingJournalStore(db_path)
-        # Player-facing dates are isolated from the hidden growth state. On legacy databases the
-        # meeting date is conservatively backfilled from the earliest reading entry when possible.
         milestones = MonsterMilestoneStore(db_path)
+        encyclopedia = MonsterEncyclopediaStore(db_path)
     except (OSError, sqlite3.DatabaseError) as exc:
         raise RuntimeStartupError('local BookEater data could not be opened safely') from exc
 
     analyzer = LazyLocalAnalyzer(model_dir)
     service = ReadingFeedService(store, analyzer)
-    return BookEaterRuntime(data, db_path, model_dir, store, journal, milestones, analyzer, service)
+    return BookEaterRuntime(
+        data, db_path, model_dir, store, journal, milestones, encyclopedia, analyzer, service
+    )
