@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import sqlite3
 import sys
+import threading
 from typing import Any
 
 from .game.loop import ReadingFeedService
@@ -68,6 +69,10 @@ class LazyLocalAnalyzer:
         self.model_dir = Path(model_dir)
         self._classifier: Any | None = None
         self._failure: Exception | None = None
+        # Startup recovery and a user's first feed can happen almost simultaneously. Without a
+        # lock, both threads could initialize ONNX/tokenizer resources at once and waste memory or
+        # leave inconsistent cached failure state.
+        self._load_lock = threading.Lock()
 
     @property
     def loaded(self) -> bool:
@@ -78,26 +83,34 @@ class LazyLocalAnalyzer:
             return self._classifier
         if self._failure is not None:
             raise ModelUnavailable('local semantic model is unavailable') from self._failure
-        try:
-            required = (self.model_dir / 'model.onnx', self.model_dir / 'tokenizer.json')
-            missing = [p.name for p in required if not p.is_file()]
-            if missing:
-                raise FileNotFoundError(', '.join(missing))
-            # Heavy optional dependencies are imported here so the UI can still start, save a
-            # note and present a recoverable pending state if packaging/model setup is broken.
-            from .nlp.hybrid_classifier_v31 import HybridE5ClassifierV31
-            self._classifier = HybridE5ClassifierV31(self.model_dir)
-            return self._classifier
-        except Exception as exc:
-            self._failure = exc
-            raise ModelUnavailable('local semantic model is unavailable') from exc
+
+        with self._load_lock:
+            # Re-check after acquiring the lock because another analysis thread may have won.
+            if self._classifier is not None:
+                return self._classifier
+            if self._failure is not None:
+                raise ModelUnavailable('local semantic model is unavailable') from self._failure
+            try:
+                required = (self.model_dir / 'model.onnx', self.model_dir / 'tokenizer.json')
+                missing = [p.name for p in required if not p.is_file()]
+                if missing:
+                    raise FileNotFoundError(', '.join(missing))
+                # Heavy optional dependencies are imported here so the UI can still start, save a
+                # note and present a recoverable pending state if packaging/model setup is broken.
+                from .nlp.hybrid_classifier_v31 import HybridE5ClassifierV31
+                self._classifier = HybridE5ClassifierV31(self.model_dir)
+                return self._classifier
+            except Exception as exc:
+                self._failure = exc
+                raise ModelUnavailable('local semantic model is unavailable') from exc
 
     def analyze(self, text: str):
         return self._load().analyze(text)
 
     def reset_failure(self) -> None:
         """Allow an explicit retry after resources have been repaired/reinstalled."""
-        self._failure = None
+        with self._load_lock:
+            self._failure = None
 
 
 @dataclass(frozen=True)
