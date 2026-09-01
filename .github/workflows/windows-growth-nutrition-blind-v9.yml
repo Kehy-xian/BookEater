@@ -45,3 +45,4 @@ jobs:
         if: steps.blind.outcome == 'failure'
         shell: pwsh
         run: exit 1
+# freshness-seal: v1.6.3 cases were committed before this trigger commit
