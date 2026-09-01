@@ -1,0 +1,5 @@
+# Developer/runtime dependencies for the bundled ONNX semantic analyzer.
+# Final Windows users do NOT install these manually; PyInstaller/Nuitka bundles them.
+onnxruntime>=1.18,<2
+tokenizers>=0.15,<1
+numpy>=1.26,<3
