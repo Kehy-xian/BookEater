@@ -1,0 +1,50 @@
+name: windows-growth-nutrition-blind-v6
+on:
+  workflow_dispatch:
+  push:
+    branches: [sprint-04-play-loop]
+    paths:
+      - 'src/bookeater/nlp/hybrid_classifier_v3.py'
+      - 'src/bookeater/nlp/hybrid_classifier_v31.py'
+      - 'src/bookeater/game/nutrition.py'
+      - 'ci/growth_nutrition_blind_v6.py'
+      - '.github/workflows/windows-growth-nutrition-blind-v6.yml'
+jobs:
+  validate:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: 'utf-8'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install -r requirements-local-nlp.txt
+      - run: python tools/fetch_e5_model.py
+      - id: blind
+        name: Run fresh hidden growth blind v6
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          New-Item -ItemType Directory -Force tests | Out-Null
+          python ci/growth_nutrition_blind_v6.py 2>&1 | Tee-Object -FilePath tests/growth_nutrition_blind_v6_console.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Print diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path tests/growth_nutrition_blind_v6_console.txt) { Get-Content -Encoding utf8 tests/growth_nutrition_blind_v6_console.txt }
+          if (Test-Path tests/growth_nutrition_blind_v6.md) { Get-Content -Encoding utf8 tests/growth_nutrition_blind_v6.md }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: growth-nutrition-blind-v6
+          if-no-files-found: warn
+          path: |
+            tests/growth_nutrition_blind_v6_console.txt
+            tests/growth_nutrition_blind_v6.md
+            tests/growth_nutrition_blind_v6.json
+      - name: Preserve validation failure
+        if: steps.blind.outcome == 'failure'
+        shell: pwsh
+        run: exit 1
