@@ -4,19 +4,23 @@ from __future__ import annotations
 
 The pet exposes only diegetic player actions. Reading analysis and hidden growth remain behind
 ReadingFeedService. Book context is selected once and reused for many timestamped notes.
+Autonomous roaming is deliberately independent from reading traits and pauses for user actions.
 """
 
 import queue
+import sys
 import threading
 import uuid
 from typing import Callable
 
 from .game.loop import FeedOutcome
 from .pet_art import PetPalette
+from .pet_behavior import PetMotion, RoamPlanner, WorkArea
 from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime
 
 
 _TRANSPARENT = '#ff00fe'
+_INTERRUPT_STATES = {'eat', 'spit_memory', 'drop'}
 
 
 class DesktopPetWindow:
@@ -47,6 +51,9 @@ class DesktopPetWindow:
 
         self._drag_x = 0
         self._drag_y = 0
+        self._dragging = False
+        self._menu_open = False
+        self._open_panels = 0
         self._frame = 0
         self._pet_state = 'idle'
         self._busy = False
@@ -54,23 +61,74 @@ class DesktopPetWindow:
         self._result_queue: queue.Queue[tuple[str, object]] = queue.Queue()
         self._book_display_to_id: dict[str, str] = {}
 
+        # Movement is a pure state machine so it can be stress-tested without Tk.  A short initial
+        # idle makes launch feel intentional before the creature begins waddling around.
+        self._roam = RoamPlanner(step_px=5, window_width=190, window_height=190, margin=8)
+        self._motion = PetMotion(80, 80, state='idle', hold_ticks=14)
+
         self.canvas.bind('<ButtonPress-1>', self._drag_start)
         self.canvas.bind('<B1-Motion>', self._drag_move)
+        self.canvas.bind('<ButtonRelease-1>', self._drag_release)
         self.canvas.bind('<Double-Button-1>', lambda _e: self.open_feed_panel())
         self.canvas.bind('<Button-3>', self._show_menu)
 
         self.menu = tk.Menu(self.root, tearoff=0)
         self.menu.add_command(label='기록 먹이기', command=self.open_feed_panel)
-        self.menu.add_command(label='내 책 기록', command=self.open_library_panel)
+        self.menu.add_command(label='내 서재', command=self.open_library_panel)
+        self.menu.add_command(label='이 친구', command=self.open_profile_panel)
         self.menu.add_separator()
         self.menu.add_command(label='종료', command=self.root.destroy)
 
+        self.root.update_idletasks()
+        self._sync_motion_from_window()
         self._draw()
         self.root.after(120, self._tick)
+        self.root.after(70, self._roam_tick)
         self.root.after(100, self._poll_results)
         self.root.after(900, self._retry_pending_async)
 
+    def _work_area(self) -> WorkArea:
+        """Best available visible desktop work area.
+
+        On Windows, SPI_GETWORKAREA avoids walking underneath the primary taskbar.  If that native
+        call is unavailable, Tk's screen rectangle is still safe and the planner keeps a margin.
+        Multi-monitor work-area refinement can be added after the first roaming playtest.
+        """
+        if sys.platform.startswith('win'):
+            try:
+                import ctypes
+
+                class RECT(ctypes.Structure):
+                    _fields_ = [
+                        ('left', ctypes.c_long), ('top', ctypes.c_long),
+                        ('right', ctypes.c_long), ('bottom', ctypes.c_long),
+                    ]
+
+                rect = RECT()
+                if ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0):
+                    if rect.right > rect.left and rect.bottom > rect.top:
+                        return WorkArea(rect.left, rect.top, rect.right, rect.bottom)
+            except Exception:
+                pass
+        return WorkArea(0, 0, self.root.winfo_screenwidth(), self.root.winfo_screenheight())
+
+    def _sync_motion_from_window(self) -> None:
+        x = int(self.root.winfo_x())
+        y = int(self.root.winfo_y())
+        x, y = self._roam.clamp_position(x, y, self._work_area())
+        self._motion = PetMotion(
+            x=x,
+            y=y,
+            state=self._motion.state,
+            target_x=self._motion.target_x,
+            target_y=self._motion.target_y,
+            facing=self._motion.facing,
+            hold_ticks=self._motion.hold_ticks,
+        )
+        self.root.geometry(f'+{x}+{y}')
+
     def _drag_start(self, event) -> None:
+        self._dragging = True
         self._drag_x = int(event.x)
         self._drag_y = int(event.y)
 
@@ -79,11 +137,62 @@ class DesktopPetWindow:
         y = self.root.winfo_pointery() - self._drag_y
         self.root.geometry(f'+{x}+{y}')
 
+    def _drag_release(self, _event) -> None:
+        self._dragging = False
+        # A user may intentionally drag partly off screen. Bring the whole pet back into a usable
+        # work area and forget the old autonomous target so movement never fights the drag.
+        self._sync_motion_from_window()
+        self._motion = PetMotion(
+            self._motion.x, self._motion.y,
+            state='idle', facing=self._motion.facing, hold_ticks=12,
+        )
+        if self._pet_state not in _INTERRUPT_STATES:
+            self._pet_state = 'idle'
+
     def _show_menu(self, event) -> None:
+        self._menu_open = True
         try:
             self.menu.tk_popup(event.x_root, event.y_root)
         finally:
             self.menu.grab_release()
+            self._menu_open = False
+
+    def _new_panel(self, title: str, geometry: str | None = None):
+        """Create a tracked top-level window; roaming pauses while any player panel is open."""
+        win = self.tk.Toplevel(self.root)
+        win.title(title)
+        win.attributes('-topmost', True)
+        if geometry:
+            win.geometry(geometry)
+        self._open_panels += 1
+        counted = True
+
+        def released(event) -> None:
+            nonlocal counted
+            if event.widget is win and counted:
+                counted = False
+                self._open_panels = max(0, self._open_panels - 1)
+
+        win.bind('<Destroy>', released, add='+')
+        return win
+
+    def _roam_tick(self) -> None:
+        if not self.root.winfo_exists():
+            return
+        interrupting = self._pet_state in _INTERRUPT_STATES
+        blocked = (
+            self._busy or self._dragging or self._menu_open or
+            self._open_panels > 0 or interrupting
+        )
+        previous = self._motion
+        self._motion = self._roam.tick(self._motion, self._work_area(), blocked=blocked)
+
+        if not blocked:
+            if (self._motion.x, self._motion.y) != (previous.x, previous.y):
+                self.root.geometry(f'+{self._motion.x}+{self._motion.y}')
+            self._pet_state = self._motion.state
+
+        self.root.after(70, self._roam_tick)
 
     def _tick(self) -> None:
         self._frame += 1
@@ -91,18 +200,35 @@ class DesktopPetWindow:
             self._eat_frames -= 1
             if self._eat_frames <= 0 and not self._busy:
                 self._pet_state = 'idle'
+                self._motion = PetMotion(
+                    self._motion.x, self._motion.y,
+                    state='idle', facing=self._motion.facing, hold_ticks=8,
+                )
         self._draw()
-        self.root.after(115 if self._pet_state == 'eat' else 170, self._tick)
+        self.root.after(115 if self._pet_state == 'eat' else 150, self._tick)
 
     def _draw(self) -> None:
+        """Vector fallback renderer used until approved PNG sprite frames are integrated."""
         c = self.canvas
         c.delete('all')
         frame = self._frame
-        eating = self._pet_state == 'eat'
+        state = self._pet_state
+        eating = state == 'eat'
+        walking = state == 'walk'
+        sleeping = state == 'sleep'
+        reading = state == 'read'
+        talking = state == 'talk'
         x = 95
+
         if eating:
             bob = (0, -3, -5, -1, 2, -2)[frame % 6]
             squash = 5 if frame % 2 else 0
+        elif walking:
+            bob = (0, -2, 0, -2)[frame % 4]
+            squash = 2 if frame % 2 else 0
+        elif sleeping:
+            bob = 2
+            squash = 3
         else:
             bob = (0, 0, -1, -2, -2, -1, 0, 0)[frame % 8]
             squash = 0
@@ -114,23 +240,35 @@ class DesktopPetWindow:
         ink = self.palette.ink
         bookmark = self.palette.bookmark
 
-        c.create_oval(x-47, 151, x+47, 160, fill='#d8d2c8', outline='')
-        c.create_oval(x-30, y+39, x-10, y+53, fill=shadow, outline=outline, width=2)
-        c.create_oval(x+10, y+39, x+30, y+53, fill=shadow, outline=outline, width=2)
-        c.create_polygon(
-            x+43, y+10, x+68, y+1, x+61, y+26, x+51, y+20,
-            fill=bookmark, outline=outline, width=2,
-        )
+        shadow_w = 44 + (4 if walking or eating else 0)
+        c.create_oval(x-shadow_w, 151, x+shadow_w, 160, fill='#d8d2c8', outline='')
+
+        # Feet alternate while walking so movement reads even before sprite art is installed.
+        foot_shift = 5 if walking and frame % 2 else 0
+        c.create_oval(x-30-foot_shift, y+39, x-10-foot_shift, y+53, fill=shadow, outline=outline, width=2)
+        c.create_oval(x+10+foot_shift, y+39, x+30+foot_shift, y+53, fill=shadow, outline=outline, width=2)
+
+        # Bookmark tail changes side with walking direction. The approved starter art remains the
+        # reference; this is only a readable movement fallback, not the final sprite.
+        facing = self._motion.facing
+        if facing >= 0:
+            tail = (x+43, y+10, x+68, y+1, x+61, y+26, x+51, y+20)
+        else:
+            tail = (x-43, y+10, x-68, y+1, x-61, y+26, x-51, y+20)
+        c.create_polygon(*tail, fill=bookmark, outline=outline, width=2)
+
         c.create_oval(
             x-52-squash, y-45+squash/2,
             x+52+squash, y+45-squash/2,
             fill=paper, outline=outline, width=3,
         )
+        c.create_polygon(x-18, y-45, x+12, y-45, x+24, y-28, x-6, y-31,
+                         fill='#eee5cf', outline='#c9bda4', width=1)
         c.create_line(x-21, y+21, x+20, y+21, fill='#cfc4aa')
         c.create_line(x-16, y+27, x+15, y+27, fill='#d8cdb5')
 
-        blink = (not eating) and frame % 29 in {27, 28}
-        if blink:
+        blink = state == 'idle' and frame % 29 in {27, 28}
+        if sleeping or blink:
             c.create_line(x-22, y-13, x-13, y-13, fill=ink, width=3)
             c.create_line(x+13, y-13, x+22, y-13, fill=ink, width=3)
         else:
@@ -145,6 +283,27 @@ class DesktopPetWindow:
                 ly = y + 5 - (i % 2) * 14
                 if lx < x - 25:
                     c.create_text(lx, ly, text=letter, fill=ink, font=('', 10, 'bold'))
+        elif sleeping:
+            c.create_arc(x-12, y+3, x+12, y+16, start=200, extent=140, style='arc', outline=ink, width=2)
+            c.create_text(x+48, y-39, text='z', fill='#71685e', font=('', 10, 'bold'))
+            if frame % 2:
+                c.create_text(x+59, y-50, text='Z', fill='#8b8176', font=('', 8, 'bold'))
+        elif reading:
+            c.create_arc(x-20, y-1, x+20, y+18, start=205, extent=130, style='arc', outline=ink, width=2)
+            c.create_polygon(
+                x-34, y+14, x, y+22, x+34, y+14, x+31, y+39, x, y+32, x-31, y+39,
+                fill='#fffaf0', outline=outline, width=2,
+            )
+            c.create_line(x, y+22, x, y+32, fill='#b9aa8d')
+            c.create_line(x-24, y+23, x-7, y+27, fill='#c7baa2')
+            c.create_line(x+7, y+27, x+24, y+23, fill='#c7baa2')
+        elif talking:
+            if frame % 2:
+                c.create_oval(x-8, y+1, x+8, y+15, fill=ink, outline='')
+            else:
+                c.create_arc(x-18, y, x+18, y+18, start=200, extent=140, style='arc', outline=ink, width=3)
+            c.create_oval(x+42, y-52, x+74, y-27, fill='#fffaf0', outline='#c9bda4', width=1)
+            c.create_text(x+58, y-40, text='…', fill=ink, font=('', 10, 'bold'))
         else:
             c.create_arc(x-22, y, x+22, y+21, start=200, extent=140, style='arc', outline=ink, width=3)
 
@@ -153,11 +312,44 @@ class DesktopPetWindow:
         self._book_display_to_id = {book.display_name: book.book_id for book in books}
         return books
 
+    @staticmethod
+    def _date_only(value: str | None) -> str:
+        if not value:
+            return '아직 없음'
+        text = str(value).strip()
+        return text[:10] if len(text) >= 10 else text
+
+    def open_profile_panel(self) -> None:
+        tk, ttk = self.tk, self.ttk
+        milestones = self.runtime.milestones.load()
+        view = self.runtime.feed_service.current_view()
+        win = self._new_panel('이 친구', '380x300')
+        body = ttk.Frame(win, padding=18)
+        body.pack(fill='both', expand=True)
+
+        ttk.Label(body, text=view.species or '글씨알', font=('', 18, 'bold')).pack(anchor='w')
+        ttk.Label(
+            body,
+            text=view.tendency_hint or '아직 어떤 모습으로 자랄지 알 수 없다.',
+            wraplength=335,
+        ).pack(anchor='w', pady=(4, 18))
+
+        dates = ttk.Frame(body)
+        dates.pack(fill='x')
+        ttk.Label(dates, text='처음 만난 날').grid(row=0, column=0, sticky='w', pady=3)
+        ttk.Label(dates, text=self._date_only(milestones.met_at)).grid(row=0, column=1, sticky='w', padx=(18, 0), pady=3)
+        ttk.Label(dates, text='첫 기록을 먹인 날').grid(row=1, column=0, sticky='w', pady=3)
+        ttk.Label(dates, text=self._date_only(milestones.first_fed_at)).grid(row=1, column=1, sticky='w', padx=(18, 0), pady=3)
+
+        ttk.Label(
+            body,
+            text='성장의 정확한 기준은 이 친구만 알고 있어요.',
+            wraplength=335,
+        ).pack(anchor='w', pady=(20, 0))
+
     def _register_book_dialog(self, *, on_saved: Callable[[str], None] | None = None) -> None:
         tk, ttk = self.tk, self.ttk
-        win = tk.Toplevel(self.root)
-        win.title('읽는 책 등록')
-        win.attributes('-topmost', True)
+        win = self._new_panel('읽는 책 등록')
         body = ttk.Frame(win, padding=14)
         body.pack(fill='both', expand=True)
         title_var = tk.StringVar()
@@ -205,10 +397,7 @@ class DesktopPetWindow:
             self._register_book_dialog(on_saved=lambda _bid: self.open_feed_panel())
             return
 
-        win = tk.Toplevel(self.root)
-        win.title('기록 먹이기')
-        win.attributes('-topmost', True)
-        win.geometry('470x430')
+        win = self._new_panel('기록 먹이기', '470x430')
         body = ttk.Frame(win, padding=14)
         body.pack(fill='both', expand=True)
 
@@ -279,10 +468,7 @@ class DesktopPetWindow:
     def open_library_panel(self) -> None:
         tk, ttk = self.tk, self.ttk
         books = self._recent_books()
-        win = tk.Toplevel(self.root)
-        win.title('내 책 기록')
-        win.attributes('-topmost', True)
-        win.geometry('500x500')
+        win = self._new_panel('내 서재', '500x500')
         body = ttk.Frame(win, padding=14)
         body.pack(fill='both', expand=True)
         if not books:
