@@ -20,12 +20,30 @@ jobs:
         with: {python-version: '3.12'}
       - run: python -m pip install -r requirements-local-nlp.txt
       - run: python tools/fetch_e5_model.py
-      - run: python ci/e5_v311_blind_validation.py
-      - shell: pwsh
-        run: Get-Content -Encoding utf8 tests/e5_v311_blind_report.md
+      - id: blind
+        name: Run blind v3.1.1 validation
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          New-Item -ItemType Directory -Force tests | Out-Null
+          python ci/e5_v311_blind_validation.py 2>&1 | Tee-Object -FilePath tests/e5_v311_blind_console.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Print diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path tests/e5_v311_blind_console.txt) { Get-Content -Encoding utf8 tests/e5_v311_blind_console.txt }
+          if (Test-Path tests/e5_v311_blind_report.md) { Get-Content -Encoding utf8 tests/e5_v311_blind_report.md }
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: e5-v311-blind-report
+          if-no-files-found: warn
           path: |
+            tests/e5_v311_blind_console.txt
             tests/e5_v311_blind_report.md
             tests/e5_v311_blind_results.json
+      - name: Preserve validation failure
+        if: steps.blind.outcome == 'failure'
+        shell: pwsh
+        run: exit 1
