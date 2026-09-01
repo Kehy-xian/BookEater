@@ -5,6 +5,17 @@ on:
     branches: [sprint-04-play-loop]
     paths:
       - '.github/workflows/windows-package-smoke.yml'
+      - 'bookeater_desktop.py'
+      - 'BookEater.spec'
+      - 'requirements-build.txt'
+      - 'requirements-local-nlp.txt'
+      - 'tools/fetch_e5_model.py'
+      - 'src/bookeater/desktop.py'
+      - 'src/bookeater/runtime.py'
+      - 'src/bookeater/storage.py'
+      - 'src/bookeater/services/**'
+      - 'src/bookeater/nlp/**'
+      - 'src/bookeater/game/**'
 jobs:
   build-smoke:
     runs-on: windows-latest
