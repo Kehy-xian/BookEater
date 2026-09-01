@@ -11,8 +11,10 @@ on:
       - 'requirements-local-nlp.txt'
       - 'tools/fetch_e5_model.py'
       - 'src/bookeater/desktop.py'
+      - 'src/bookeater/pet_window.py'
+      - 'src/bookeater/pet_art.py'
       - 'src/bookeater/runtime.py'
-      - 'src/bookeater/storage.py'
+      - 'src/bookeater/storage/**'
       - 'src/bookeater/services/**'
       - 'src/bookeater/nlp/**'
       - 'src/bookeater/game/**'
@@ -57,10 +59,11 @@ jobs:
           책먹는 몬스터 - Windows playable development build
 
           1. 이 폴더 전체를 그대로 유지해 주세요.
-          2. BookEater.exe를 실행하세요.
-          3. 독서기록을 적고 "몬스터에게 먹이기"를 누르면 글씨알 EAT 애니메이션과 성장 처리가 실행됩니다.
-          4. 현재 빌드는 개발용 첫 플레이어블입니다. 코드 서명/설치 프로그램/자동 업데이트는 아직 포함되지 않았습니다.
-          5. 독서기록과 성장 데이터는 사용자 PC의 로컬 저장소에 저장됩니다.
+          2. BookEater.exe를 실행하면 작은 투명 글씨알이 바탕화면에 나타납니다.
+          3. 글씨알을 더블클릭하거나 우클릭 → "기록 먹이기"로 기록창을 엽니다.
+          4. 책은 한 번 등록한 뒤 같은 책에 여러 독서기록을 이어서 남길 수 있습니다.
+          5. 현재 빌드는 개발용 플레이어블입니다. 코드 서명/설치 프로그램/자동 업데이트는 아직 포함되지 않았습니다.
+          6. 독서기록과 성장 데이터는 사용자 PC의 로컬 저장소에 저장됩니다.
 
           Build commit: $env:GITHUB_SHA
           "@ | Set-Content -Encoding utf8 'dist/BookEater/README_FIRST.txt'
