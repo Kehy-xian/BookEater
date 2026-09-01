@@ -50,15 +50,18 @@ class DesktopApp:
         self.runtime = runtime
         self.root = tk.Tk()
         self.root.title('책먹는 몬스터')
-        self.root.geometry('520x650')
-        self.root.minsize(430, 560)
+        self.root.geometry('560x760')
+        self.root.minsize(460, 650)
 
         self._result_queue: queue.Queue[tuple[str, object]] = queue.Queue()
         self._busy = False
         self._pet_state = 'idle'
         self._pet_frame = 0
         self._pet_state_until = 0
+        self._book_display_to_id: dict[str, str] = {}
+        self._last_submitted_book_id: str | None = None
         self._build()
+        self._refresh_books()
         self._render_growth(self.runtime.feed_service.current_view())
         self.root.after(80, self._animate_pet)
         self.root.after(120, self._poll_results)
@@ -76,7 +79,7 @@ class DesktopApp:
         ttk.Label(
             outer,
             text='읽고 남긴 문장을 먹이면, 몬스터가 천천히 자기 모습으로 자랍니다.',
-            wraplength=470,
+            wraplength=510,
         ).pack(anchor='w', pady=(4, 14))
 
         pet_frame = ttk.LabelFrame(outer, text='내 몬스터', padding=14)
@@ -96,32 +99,140 @@ class DesktopApp:
         self.hint_var = tk.StringVar(value='아직 어떤 모습으로 자랄지 알 수 없다.')
         ttk.Label(pet_frame, textvariable=self.species_var, font=('', 15, 'bold')).pack()
         ttk.Label(pet_frame, textvariable=self.stage_var).pack(pady=(2, 6))
-        ttk.Label(pet_frame, textvariable=self.hint_var, wraplength=440, justify='center').pack()
+        ttk.Label(pet_frame, textvariable=self.hint_var, wraplength=470, justify='center').pack()
 
-        note_frame = ttk.LabelFrame(outer, text='오늘 남긴 독서기록', padding=12)
-        note_frame.pack(fill='both', expand=True, pady=(16, 0))
+        book_frame = ttk.LabelFrame(outer, text='지금 읽는 책', padding=10)
+        book_frame.pack(fill='x', pady=(14, 0))
+        book_row = ttk.Frame(book_frame)
+        book_row.pack(fill='x')
+        self.book_var = tk.StringVar(value='')
+        self.book_combo = ttk.Combobox(book_row, textvariable=self.book_var, state='readonly')
+        self.book_combo.pack(side='left', fill='x', expand=True)
+        ttk.Button(book_row, text='새 책', command=self._new_book_dialog).pack(side='left', padx=(8, 0))
+        ttk.Button(book_row, text='기록 보기', command=self._show_book_timeline).pack(side='left', padx=(6, 0))
+
+        progress_row = ttk.Frame(book_frame)
+        progress_row.pack(fill='x', pady=(8, 0))
+        ttk.Label(progress_row, text='이번에 읽은 곳').pack(side='left')
+        self.progress_var = tk.StringVar(value='')
+        self.progress_entry = ttk.Entry(progress_row, textvariable=self.progress_var)
+        self.progress_entry.pack(side='left', fill='x', expand=True, padx=(8, 0))
+        ttk.Label(progress_row, text='선택사항 · 예: 42쪽 / 3장 / 2부').pack(side='left', padx=(8, 0))
+
+        note_frame = ttk.LabelFrame(outer, text='이 책에 이어서 남길 기록', padding=12)
+        note_frame.pack(fill='both', expand=True, pady=(14, 0))
         ttk.Label(
             note_frame,
-            text='인상 깊었던 장면, 떠오른 질문, 확인해 본 것처럼 자유롭게 적어 주세요.',
-            wraplength=445,
+            text='한 책을 여러 번 나눠 읽어도 괜찮아요. 기록은 이전 내용을 덮지 않고 시간순으로 계속 쌓입니다.',
+            wraplength=490,
         ).pack(anchor='w')
 
-        self.note = tk.Text(note_frame, height=9, wrap='word', undo=True)
+        self.note = tk.Text(note_frame, height=8, wrap='word', undo=True)
         self.note.pack(fill='both', expand=True, pady=(8, 10))
         self.note.bind('<Control-Return>', lambda _e: self._submit())
 
         bottom = ttk.Frame(note_frame)
         bottom.pack(fill='x')
-        self.status_var = tk.StringVar(value='기록을 한 조각 남겨 보세요.')
-        ttk.Label(bottom, textvariable=self.status_var, wraplength=310).pack(side='left', fill='x', expand=True)
+        self.status_var = tk.StringVar(value='책을 한 번 고른 뒤 기록만 계속 남기면 됩니다.')
+        ttk.Label(bottom, textvariable=self.status_var, wraplength=330).pack(side='left', fill='x', expand=True)
         self.feed_button = ttk.Button(bottom, text='몬스터에게 먹이기', command=self._submit)
         self.feed_button.pack(side='right', padx=(10, 0))
 
         ttk.Label(
             outer,
             text='Ctrl+Enter로도 먹일 수 있어요. 성장의 정확한 기준은 몬스터만 알고 있습니다.',
-            wraplength=470,
+            wraplength=500,
         ).pack(anchor='w', pady=(10, 0))
+
+    def _refresh_books(self, *, select_book_id: str | None = None) -> None:
+        books = self.runtime.journal.list_books(limit=50)
+        self._book_display_to_id = {book.display_name: book.book_id for book in books}
+        values = list(self._book_display_to_id)
+        self.book_combo.configure(values=values)
+        if not values:
+            self.book_var.set('')
+            return
+
+        wanted = select_book_id
+        if wanted is not None:
+            for display, book_id in self._book_display_to_id.items():
+                if book_id == wanted:
+                    self.book_var.set(display)
+                    return
+        # list_books is ordered by most recently used book, so restart resumes naturally.
+        self.book_var.set(values[0])
+
+    def _selected_book_id(self) -> str | None:
+        return self._book_display_to_id.get(self.book_var.get())
+
+    def _new_book_dialog(self) -> None:
+        tk, ttk = self.tk, self.ttk
+        win = tk.Toplevel(self.root)
+        win.title('읽는 책 등록')
+        win.transient(self.root)
+        win.resizable(False, False)
+        body = ttk.Frame(win, padding=16)
+        body.pack(fill='both', expand=True)
+
+        title_var = tk.StringVar()
+        author_var = tk.StringVar()
+        ttk.Label(body, text='책 제목').grid(row=0, column=0, sticky='w')
+        title_entry = ttk.Entry(body, textvariable=title_var, width=38)
+        title_entry.grid(row=1, column=0, columnspan=2, sticky='ew', pady=(4, 10))
+        ttk.Label(body, text='저자 (선택)').grid(row=2, column=0, sticky='w')
+        ttk.Entry(body, textvariable=author_var, width=38).grid(
+            row=3, column=0, columnspan=2, sticky='ew', pady=(4, 12)
+        )
+        msg = tk.StringVar(value='한 번 등록하면 다음 기록부터 다시 입력하지 않아도 돼요.')
+        ttk.Label(body, textvariable=msg, wraplength=310).grid(row=4, column=0, columnspan=2, sticky='w')
+
+        def save() -> None:
+            title = title_var.get().strip()
+            if not title:
+                msg.set('책 제목은 입력해 주세요.')
+                return
+            book_id = uuid.uuid4().hex
+            try:
+                self.runtime.journal.add_book(book_id, title, author=author_var.get().strip())
+            except Exception:
+                msg.set('책을 저장하지 못했어요. 다시 시도해 주세요.')
+                return
+            self._refresh_books(select_book_id=book_id)
+            win.destroy()
+            self.status_var.set(f'“{title}”에 기록을 이어서 남길 수 있어요.')
+
+        ttk.Button(body, text='등록', command=save).grid(row=5, column=1, sticky='e', pady=(12, 0))
+        title_entry.focus_set()
+        win.bind('<Return>', lambda _e: save())
+
+    def _show_book_timeline(self) -> None:
+        book_id = self._selected_book_id()
+        if not book_id:
+            self.status_var.set('먼저 읽는 책을 등록해 주세요.')
+            return
+        book = self.runtime.journal.get_book(book_id)
+        if book is None:
+            self.status_var.set('선택한 책을 다시 불러오지 못했어요.')
+            return
+        notes = self.runtime.journal.notes_for_book(book_id)
+
+        tk, ttk = self.tk, self.ttk
+        win = tk.Toplevel(self.root)
+        win.title(book.display_name)
+        win.geometry('520x480')
+        body = ttk.Frame(win, padding=14)
+        body.pack(fill='both', expand=True)
+        ttk.Label(body, text=book.display_name, font=('', 14, 'bold')).pack(anchor='w')
+        ttk.Label(body, text=f'남긴 기록 {len(notes)}개').pack(anchor='w', pady=(2, 10))
+        view = tk.Text(body, wrap='word', state='normal')
+        view.pack(fill='both', expand=True)
+        if not notes:
+            view.insert('end', '아직 이 책에 남긴 기록이 없어요.')
+        else:
+            for i, note in enumerate(notes, 1):
+                progress = f' · {note.progress_text}' if note.progress_text else ''
+                view.insert('end', f'{i}. {note.created_at}{progress}\n{note.note_text}\n\n')
+        view.configure(state='disabled')
 
     def _set_pet_state(self, state: str, *, hold_frames: int = 0) -> None:
         """Switch the visible creature animation without leaking hidden growth state."""
@@ -253,13 +364,28 @@ class DesktopApp:
         if not text:
             self.status_var.set('먹일 독서기록을 먼저 적어 주세요.')
             return
+        book_id = self._selected_book_id()
+        if not book_id:
+            self.status_var.set('먼저 지금 읽는 책을 한 번 등록해 주세요.')
+            return
+        progress = self.progress_var.get().strip() or None
         feed_id = _feed_id()
-        self._set_busy(True, '몬스터가 문장을 우물우물 읽는 중…')
+        self._last_submitted_book_id = book_id
+        self._set_busy(True, '몬스터가 이 책의 새 기록을 우물우물 읽는 중…')
         self._set_pet_state('eat')
 
         def work() -> None:
             try:
-                outcome = self.runtime.feed_service.submit(feed_id, text)
+                # Save raw text first and attach book context before local AI analysis. The same
+                # book can own arbitrarily many notes, so users never have to retype its title.
+                self.runtime.journal.attach_note(
+                    self.runtime.store,
+                    feed_id,
+                    text,
+                    book_id=book_id,
+                    progress_text=progress,
+                )
+                outcome = self.runtime.feed_service.retry(feed_id)
                 self._result_queue.put(('feed', outcome))
             except Exception as exc:
                 # UI gets a generic local failure. Detailed internals remain local logs/store only.
@@ -305,6 +431,8 @@ class DesktopApp:
         # second feed id for the same pending note; recovery will retry the saved record instead.
         if outcome.status in {'fed', 'pending'}:
             self.note.delete('1.0', 'end')
+            self.progress_var.set('')
+            self._refresh_books(select_book_id=self._last_submitted_book_id)
         self._set_busy(False)
         # Finish one visible chew cycle before returning to the quiet idle bob.
         self._pet_state_until = 4
