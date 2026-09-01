@@ -17,6 +17,7 @@ from typing import Any
 
 from .game.loop import ReadingFeedService
 from .storage.sqlite_store import SQLiteGameStore
+from .storage.journal import ReadingJournalStore
 
 APP_DIR_NAME = 'BookEater'
 DB_FILENAME = 'bookeater.sqlite3'
@@ -119,6 +120,7 @@ class BookEaterRuntime:
     database_path: Path
     model_dir: Path
     store: SQLiteGameStore
+    journal: ReadingJournalStore
     analyzer: LazyLocalAnalyzer
     feed_service: ReadingFeedService
 
@@ -144,9 +146,12 @@ def bootstrap_runtime(
             f.write('ok')
         probe.unlink(missing_ok=True)
         store = SQLiteGameStore(db_path)
+        # Journal tables live in the same local SQLite file but remain conceptually separate from
+        # monster internals. A single book can own any number of timestamped reading entries.
+        journal = ReadingJournalStore(db_path)
     except (OSError, sqlite3.DatabaseError) as exc:
         raise RuntimeStartupError('local BookEater data could not be opened safely') from exc
 
     analyzer = LazyLocalAnalyzer(model_dir)
     service = ReadingFeedService(store, analyzer)
-    return BookEaterRuntime(data, db_path, model_dir, store, analyzer, service)
+    return BookEaterRuntime(data, db_path, model_dir, store, journal, analyzer, service)
