@@ -53,7 +53,7 @@ jobs:
       - name: Add first-run note
         shell: pwsh
         run: |
-          @'
+          @"
           책먹는 몬스터 - Windows playable development build
 
           1. 이 폴더 전체를 그대로 유지해 주세요.
@@ -63,12 +63,12 @@ jobs:
           5. 독서기록과 성장 데이터는 사용자 PC의 로컬 저장소에 저장됩니다.
 
           Build commit: $env:GITHUB_SHA
-          '@ | Set-Content -Encoding utf8 'dist/BookEater/README_FIRST.txt'
+          "@ | Set-Content -Encoding utf8 'dist/BookEater/README_FIRST.txt'
       - name: Upload playable Windows bundle
         uses: actions/upload-artifact@v4
         with:
           name: BookEater-windows-playable
           path: dist/BookEater
           if-no-files-found: error
-          compression-level: 0
+          compression-level: 9
           retention-days: 14
