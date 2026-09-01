@@ -46,7 +46,7 @@ jobs:
         shell: pwsh
         run: |
           $env:BOOKEATER_DATA_DIR = Join-Path $env:RUNNER_TEMP 'bookeater-package-smoke-data'
-          & 'dist/BookEater/BookEater.exe' --smoke
-          if ($LASTEXITCODE -ne 0) { throw "packaged smoke exit=$LASTEXITCODE" }
+          $proc = Start-Process -FilePath 'dist/BookEater/BookEater.exe' -ArgumentList '--smoke' -Wait -PassThru
+          if ($proc.ExitCode -ne 0) { throw "packaged smoke exit=$($proc.ExitCode)" }
           if (-not (Test-Path (Join-Path $env:BOOKEATER_DATA_DIR 'bookeater.sqlite3'))) { throw 'packaged SQLite DB was not created' }
           Write-Host 'PACKAGED_WINDOWS_SMOKE_OK'
