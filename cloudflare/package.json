@@ -8,7 +8,7 @@
     "db:init": "wrangler d1 execute bookeater-feedback --file=schema.sql --remote"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260901.0",
+    "@cloudflare/workers-types": "latest",
     "wrangler": "^4.0.0",
     "typescript": "^5.0.0"
   }
