@@ -1,0 +1,17 @@
+name: growth-route-profile-v2-diagnostic
+on:
+  workflow_dispatch:
+  push:
+    branches: [sprint-04-play-loop]
+    paths:
+      - 'ci/growth_route_profile_v2_diagnostic.py'
+      - '.github/workflows/growth-route-profile-v2-diagnostic.yml'
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Re-run sealed v2 profiles as diagnostic only
+        run: python ci/growth_route_profile_v2_diagnostic.py
