@@ -47,6 +47,8 @@ product direction and is no longer a reliable checklist by itself.
 - Transparent always-on-top draggable Windows pet with bounded autonomous roaming.
 - Sprite IDLE/EAT/WALK/READ/SLEEP/TALK/SPIT_MEMORY states and lineage-safe vector fallback.
 - Feed panel, practical bookshelf/timeline, current-monster profile and lineage-tree encyclopedia.
+- Collision-safe book selectors: duplicate title/author labels use publisher, ISBN or a stable
+  short local token and never overwrite another book ID in the UI mapping.
 - Local memory resurfacing and broad personality dialogue.
 - First-run drop animation with replay setting; per-user Windows auto-start, default OFF.
 - Care state, snack/play/wash actions and one minimal letter-catching mini-game.
@@ -87,20 +89,16 @@ product direction and is no longer a reliable checklist by itself.
 ## Highest-priority refinement/bug risks
 
 1. Production update channel must be exercised with a prerelease tag before public distribution.
-2. Duplicate visible book labels can make the feed combobox ambiguous because UI selection is
-   keyed by display text; selection should eventually carry the stable book ID directly.
-3. Settings/recommendation/download flows need real Windows usability testing for slow network,
+2. Settings/recommendation/download flows need real Windows usability testing for slow network,
    panel-close and SmartScreen behavior beyond headless CI.
-4. Catalog and feedback endpoints need rate-limit, abuse and retention-policy review before public
+3. Catalog and feedback endpoints need rate-limit, abuse and retention-policy review before public
    deployment.
-5. The Pillow `Image.getdata()` test helper warning should be updated before Pillow 14.
 
 ## Next order
 
-1. Run all core tests and Windows package/installer regression for the verified updater changes.
-2. Create a non-public-facing prerelease version/tag only after confirming version text and release
+1. Create a non-public-facing prerelease version/tag only after confirming version text and release
    notes; verify latest-manifest download and updater launch end to end.
-3. Deploy the catalog proxy on a free tier and bind the real endpoint without exposing the Kakao
+2. Deploy the catalog proxy on a free tier and bind the real endpoint without exposing the Kakao
    key.
-4. Add explicit local correction/odd-result UX before enabling any improvement-data upload.
-5. Resolve duplicate-label book selection and complete multi-monitor/manual Windows playtests.
+3. Add explicit local correction/odd-result UX before enabling any improvement-data upload.
+4. Complete multi-monitor/manual Windows playtests.

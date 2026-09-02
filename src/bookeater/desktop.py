@@ -13,6 +13,7 @@ import threading
 import uuid
 from typing import Callable
 
+from .book_choices import book_choice_map
 from .game.loop import FeedOutcome
 from .game.presentation import PublicGrowthView
 from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime
@@ -146,7 +147,7 @@ class DesktopApp:
 
     def _refresh_books(self, *, select_book_id: str | None = None) -> None:
         books = self.runtime.journal.list_books(limit=50)
-        self._book_display_to_id = {book.display_name: book.book_id for book in books}
+        self._book_display_to_id = book_choice_map(books)
         values = list(self._book_display_to_id)
         self.book_combo.configure(values=values)
         if not values:

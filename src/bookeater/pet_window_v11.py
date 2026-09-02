@@ -28,12 +28,17 @@ class DesktopPetWindowV11(DesktopPetWindowV10):
         if not books:
             self._register_book_dialog(on_saved=lambda _bid: self.open_feed_panel())
             return
+        book_choices = dict(self._book_display_to_id)
 
         draft = self.runtime.drafts.load()
         draft_display = None
         if draft is not None and draft.book_id:
             draft_display = next(
-                (book.display_name for book in books if book.book_id == draft.book_id),
+                (
+                    label
+                    for label, book_id in book_choices.items()
+                    if book_id == draft.book_id
+                ),
                 None,
             )
 
@@ -42,7 +47,8 @@ class DesktopPetWindowV11(DesktopPetWindowV10):
         body.pack(fill='both', expand=True)
 
         ttk.Label(body, text='어느 책을 읽었나요?').pack(anchor='w')
-        book_var = tk.StringVar(value=draft_display or books[0].display_name)
+        choices = list(book_choices)
+        book_var = tk.StringVar(value=draft_display or choices[0])
         if draft is not None and draft.book_id and draft_display is None:
             # Do not silently attach a recovered draft to a different book.
             book_var.set('')
@@ -50,14 +56,20 @@ class DesktopPetWindowV11(DesktopPetWindowV10):
             body,
             textvariable=book_var,
             state='readonly',
-            values=[b.display_name for b in books],
+            values=choices,
         )
         combo.pack(fill='x', pady=(4, 8))
 
         def select_registered_book(book_id: str) -> None:
-            fresh = self._recent_books()
-            combo.configure(values=[b.display_name for b in fresh])
-            selected = next((b.display_name for b in fresh if b.book_id == book_id), None)
+            self._recent_books()
+            book_choices.clear()
+            book_choices.update(self._book_display_to_id)
+            choices = list(book_choices)
+            combo.configure(values=choices)
+            selected = next(
+                (label for label, mapped_id in book_choices.items() if mapped_id == book_id),
+                None,
+            )
             if selected:
                 book_var.set(selected)
                 schedule_save()
@@ -94,7 +106,7 @@ class DesktopPetWindowV11(DesktopPetWindowV10):
         submitted = {'yes': False}
 
         def selected_book_id() -> str | None:
-            return self._book_display_to_id.get(book_var.get())
+            return book_choices.get(book_var.get())
 
         def flush_draft(*, announce: bool = False) -> None:
             try:

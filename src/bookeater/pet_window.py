@@ -13,6 +13,7 @@ import threading
 import uuid
 from typing import Callable
 
+from .book_choices import book_choice_map
 from .game.loop import FeedOutcome
 from .pet_art import PetPalette
 from .pet_behavior import PetMotion, RoamPlanner, WorkArea
@@ -309,7 +310,7 @@ class DesktopPetWindow:
 
     def _recent_books(self):
         books = self.runtime.journal.list_books(limit=50)
-        self._book_display_to_id = {book.display_name: book.book_id for book in books}
+        self._book_display_to_id = book_choice_map(books)
         return books
 
     @staticmethod
@@ -396,20 +397,28 @@ class DesktopPetWindow:
         if not books:
             self._register_book_dialog(on_saved=lambda _bid: self.open_feed_panel())
             return
+        book_choices = dict(self._book_display_to_id)
 
         win = self._new_panel('기록 먹이기', '470x430')
         body = ttk.Frame(win, padding=14)
         body.pack(fill='both', expand=True)
 
         ttk.Label(body, text='어느 책을 읽었나요?').pack(anchor='w')
-        book_var = tk.StringVar(value=books[0].display_name)
-        combo = ttk.Combobox(body, textvariable=book_var, state='readonly', values=[b.display_name for b in books])
+        choices = list(book_choices)
+        book_var = tk.StringVar(value=choices[0])
+        combo = ttk.Combobox(body, textvariable=book_var, state='readonly', values=choices)
         combo.pack(fill='x', pady=(4, 8))
 
         def select_registered_book(book_id: str) -> None:
-            fresh = self._recent_books()
-            combo.configure(values=[b.display_name for b in fresh])
-            selected = next((b.display_name for b in fresh if b.book_id == book_id), None)
+            self._recent_books()
+            book_choices.clear()
+            book_choices.update(self._book_display_to_id)
+            choices = list(book_choices)
+            combo.configure(values=choices)
+            selected = next(
+                (label for label, mapped_id in book_choices.items() if mapped_id == book_id),
+                None,
+            )
             if selected:
                 book_var.set(selected)
 
@@ -435,7 +444,7 @@ class DesktopPetWindow:
             if self._busy:
                 return
             text = note.get('1.0', 'end').strip()
-            book_id = self._book_display_to_id.get(book_var.get())
+            book_id = book_choices.get(book_var.get())
             if not text:
                 status_var.set('기록을 먼저 적어 주세요.')
                 return
@@ -475,14 +484,16 @@ class DesktopPetWindow:
             ttk.Label(body, text='아직 등록한 책이 없어요.').pack(anchor='w')
             return
 
-        book_var = tk.StringVar(value=books[0].display_name)
-        combo = ttk.Combobox(body, textvariable=book_var, state='readonly', values=[b.display_name for b in books])
+        book_choices = dict(self._book_display_to_id)
+        choices = list(book_choices)
+        book_var = tk.StringVar(value=choices[0])
+        combo = ttk.Combobox(body, textvariable=book_var, state='readonly', values=choices)
         combo.pack(fill='x')
         view = tk.Text(body, wrap='word', state='disabled')
         view.pack(fill='both', expand=True, pady=(10, 0))
 
         def render(*_args) -> None:
-            book_id = self._book_display_to_id.get(book_var.get())
+            book_id = book_choices.get(book_var.get())
             notes = self.runtime.journal.notes_for_book(book_id) if book_id else []
             view.configure(state='normal')
             view.delete('1.0', 'end')

@@ -10,6 +10,7 @@ on:
       - 'src/bookeater/services/**'
       - 'src/bookeater/version.py'
       - 'src/bookeater/runtime.py'
+      - 'src/bookeater/book_choices.py'
       - 'src/bookeater/desktop.py'
       - 'src/bookeater/launch_guard.py'
       - 'src/bookeater/pet_window.py'
