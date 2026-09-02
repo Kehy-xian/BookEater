@@ -22,6 +22,7 @@ on:
       - 'src/bookeater/pet_window_v8.py'
       - 'src/bookeater/pet_art.py'
       - 'src/bookeater/pet_sprite.py'
+      - 'src/bookeater/pet_fallback_forms.py'
       - 'src/bookeater/pet_behavior.py'
       - 'src/bookeater/runtime.py'
       - 'src/bookeater/storage/**'
@@ -71,9 +72,12 @@ jobs:
           책먹는 몬스터 - Windows playable development build
 
           BookEater.exe를 실행하면 작은 투명 몬스터가 바탕화면에서 쉬고 돌아다닙니다.
+          진화 기록 수 게이트는 0~15 글씨알, 16~30 1차, 31~54 2차, 55+ 최종이며
+          모든 단계에서 성향 신호가 불충분하면 억지로 진화하지 않습니다.
           현재 A/B/C 진화 혈통이 단일 성장 체계이며, 세계 주제는 별도 외형 모티프로 누적됩니다.
           실제 투명 PNG 프레임이 완성된 form/state는 자동으로 production sprite를 사용하고,
-          프레임이 없거나 깨졌으면 안전하게 벡터 fallback을 사용합니다.
+          프레임이 없거나 깨졌으면 승인된 가장 가까운 혈통 실루엣의 벡터 fallback을 사용합니다.
+          미확정 최종형은 코드가 임의의 외형을 만들지 않고 승인된 2차 실루엣을 유지합니다.
           기록/서재/도감/기억/대사/돌보기/미니게임/첫 만남/자동실행 기능이 포함되어 있습니다.
           정식 설치 프로그램/코드 서명/자동 업데이트/실제 도서 추천 공급자 연결은 아직 개발 중입니다.
 
