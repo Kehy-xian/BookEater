@@ -2,9 +2,10 @@ from __future__ import annotations
 
 """Route-aware production sprite discovery and Tk cache.
 
-Concept art is never treated as a sprite. A form/state is drawable from PNG only when every
-required frame exists; otherwise the desktop pet must use its vector fallback. This prevents
-half-installed updates from producing frozen or missing creatures.
+Art is intentionally hot-swappable. Packaged production sprites are the stable default, while a
+complete animation placed in the local ``art_overrides`` directory may replace that state without
+changing reading, growth, persistence, or NLP code. We never mix partial override frames with
+packaged frames: a state comes from one complete source or falls back safely.
 """
 
 from pathlib import Path
@@ -14,10 +15,15 @@ from .game.form_catalog import catalog_entry
 from .pet_art import GEULSSIAL_ANIMATIONS, complete_animation_available, expected_frame_paths
 
 SPRITE_RELATIVE_DIR = Path('resources') / 'sprites'
+ART_OVERRIDE_DIRNAME = 'art_overrides'
 
 
 def sprite_root(resource_root: str | Path) -> Path:
     return Path(resource_root) / SPRITE_RELATIVE_DIR
+
+
+def default_override_root(data_dir: str | Path) -> Path:
+    return Path(data_dir) / ART_OVERRIDE_DIRNAME
 
 
 def asset_slug_for_form(form_id: str) -> str | None:
@@ -41,31 +47,87 @@ def production_frame_paths(
     state: str,
 ) -> tuple[Path, ...]:
     slug = asset_slug_for_form(form_id)
-    if not slug:
+    if not slug or state not in GEULSSIAL_ANIMATIONS:
         return ()
     return expected_frame_paths(sprite_root(resource_root), slug, state)
+
+
+def override_animation_available(
+    override_root: str | Path | None,
+    form_id: str,
+    state: str,
+) -> bool:
+    if override_root is None:
+        return False
+    slug = asset_slug_for_form(form_id)
+    if not slug or state not in GEULSSIAL_ANIMATIONS:
+        return False
+    return complete_animation_available(Path(override_root), slug, state)
+
+
+def override_frame_paths(
+    override_root: str | Path | None,
+    form_id: str,
+    state: str,
+) -> tuple[Path, ...]:
+    if override_root is None:
+        return ()
+    slug = asset_slug_for_form(form_id)
+    if not slug or state not in GEULSSIAL_ANIMATIONS:
+        return ()
+    return expected_frame_paths(Path(override_root), slug, state)
+
+
+def resolved_frame_paths(
+    resource_root: str | Path,
+    form_id: str,
+    state: str,
+    *,
+    override_root: str | Path | None = None,
+) -> tuple[Path, ...]:
+    """Return one complete animation source, preferring a local art override.
+
+    A partial override never borrows missing frames from the packaged bundle. This makes an art
+    replacement atomic at the animation-state level and keeps half-copied development assets from
+    producing mixed designs on screen.
+    """
+    if override_animation_available(override_root, form_id, state):
+        return override_frame_paths(override_root, form_id, state)
+    if production_animation_available(resource_root, form_id, state):
+        return production_frame_paths(resource_root, form_id, state)
+    return ()
 
 
 class TkSpriteCache:
     """Load Tk PhotoImages lazily and keep Python references alive for Canvas rendering."""
 
-    def __init__(self, tk_module: Any, resource_root: str | Path):
+    def __init__(
+        self,
+        tk_module: Any,
+        resource_root: str | Path,
+        *,
+        override_root: str | Path | None = None,
+    ):
         self.tk = tk_module
         self.resource_root = Path(resource_root)
+        self.override_root = Path(override_root) if override_root is not None else None
         self._cache: dict[tuple[str, str], tuple[Any, ...] | None] = {}
 
     def frames(self, form_id: str, state: str) -> tuple[Any, ...] | None:
         key = (str(form_id), str(state))
         if key in self._cache:
             return self._cache[key]
-        if not production_animation_available(self.resource_root, form_id, state):
+        paths = resolved_frame_paths(
+            self.resource_root,
+            form_id,
+            state,
+            override_root=self.override_root,
+        )
+        if not paths:
             self._cache[key] = None
             return None
         try:
-            images = tuple(
-                self.tk.PhotoImage(file=str(path))
-                for path in production_frame_paths(self.resource_root, form_id, state)
-            )
+            images = tuple(self.tk.PhotoImage(file=str(path)) for path in paths)
         except Exception:
             # Corrupt or unsupported PNG: keep the playable vector fallback instead of crashing.
             self._cache[key] = None
