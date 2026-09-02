@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-"""Desktop-pet V8: route-aware production sprite rendering with safe fallback."""
+"""Desktop-pet V8: route-aware production sprites with lineage-safe vector fallback."""
 
 from .pet_art import GEULSSIAL_ANIMATIONS
+from .pet_fallback_forms import approved_visual_form, fallback_family, fallback_variant
 from .pet_sprite import TkSpriteCache
 from .pet_window_v7 import DesktopPetWindowV7
 from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime
@@ -11,19 +12,15 @@ from .services.dialogue import choose_ambient_line
 
 class DesktopPetWindowV8(DesktopPetWindowV7):
     def __init__(self, runtime: BookEaterRuntime):
-        # Base constructors call _draw during setup. Keep these fields valid before super().__init__.
         self._sprite_cache: TkSpriteCache | None = None
         self._visual_form_id = 'starter'
         self._visual_revision = -1
         super().__init__(runtime)
         self._visual_form_id = runtime.store.load_state().form_id
-        # model_dir = <resource_root>/resources/models/<model>; parents[2] is resource_root.
         resource_base = runtime.model_dir.parents[2]
         self._sprite_cache = TkSpriteCache(self.tk, resource_base)
 
     def _refresh_visual_identity(self) -> None:
-        # Poll only a few times per second at most; SQLite is local but there is no reason to read it
-        # on every animation frame. Feed commits update revision atomically with form_id.
         if self._frame % 8:
             return
         state = self.runtime.store.load_state()
@@ -59,6 +56,189 @@ class DesktopPetWindowV8(DesktopPetWindowV7):
             font=('', 8),
         )
 
+    def _pose(self, state: str) -> tuple[int, int]:
+        """Return body bob and alternating foot shift for a lightweight fallback animation."""
+        frame = self._frame
+        if state == 'walk':
+            return (0, -2, 0, -2)[frame % 4], (5 if frame % 2 else -3)
+        if state == 'eat':
+            return (0, -3, -5, -1, 2, -2)[frame % 6], 0
+        if state == 'sleep':
+            return 2, 0
+        if state == 'idle':
+            return (0, 0, -1, -1, -2, -3, -3, -2, -1, -1, 0, 0)[frame % 12], 0
+        return (0, -1, -1, 0)[frame % 4], 0
+
+    def _draw_face(self, x: int, y: int, *, dark_face: bool, state: str) -> None:
+        c = self.canvas
+        ink = '#fff1c7' if dark_face else self.palette.ink
+        sleeping = state == 'sleep'
+        blink = state == 'idle' and self._frame % 29 in {27, 28}
+        if sleeping or blink:
+            c.create_line(x-16, y-8, x-8, y-8, fill=ink, width=3)
+            c.create_line(x+8, y-8, x+16, y-8, fill=ink, width=3)
+        else:
+            c.create_oval(x-17, y-13, x-9, y-4, fill=ink, outline='')
+            c.create_oval(x+9, y-13, x+17, y-4, fill=ink, outline='')
+
+        if state == 'eat':
+            c.create_oval(x-11, y+2, x+11, y+18, fill=ink, outline='')
+        elif sleeping:
+            c.create_arc(x-10, y+1, x+10, y+12, start=200, extent=140, style='arc', outline=ink, width=2)
+        elif state == 'talk' and self._frame % 2:
+            c.create_oval(x-7, y+1, x+7, y+13, fill=ink, outline='')
+        else:
+            c.create_arc(x-13, y, x+13, y+13, start=200, extent=140, style='arc', outline=ink, width=2)
+
+    def _draw_action_marks(self, x: int, y: int, state: str) -> None:
+        c = self.canvas
+        if state == 'eat':
+            for i, letter in enumerate(('가', 'A', '?')):
+                phase = (self._frame * 10 + i * 29) % 72
+                lx = x - 100 + phase
+                ly = y + 4 - (i % 2) * 13
+                if lx < x - 25:
+                    c.create_text(lx, ly, text=letter, fill=self.palette.ink, font=('', 9, 'bold'))
+        elif state == 'sleep':
+            c.create_text(x+48, y-43, text='Z', fill='#71685e', font=('', 10, 'bold'))
+        elif state == 'read':
+            c.create_polygon(
+                x-32, y+23, x, y+30, x+32, y+23, x+28, y+43, x, y+37, x-28, y+43,
+                fill='#fffaf0', outline=self.palette.outline, width=2,
+            )
+            c.create_line(x, y+30, x, y+37, fill='#b9aa8d')
+
+    def _draw_book_family(self, visual_form: str, state: str, bob: int, foot_shift: int) -> None:
+        c = self.canvas
+        x, y = 95, 93 + bob
+        outline = self.palette.outline
+        paper = self.palette.paper
+        shadow = self.palette.paper_shadow
+        bookmark = self.palette.bookmark
+        variant = fallback_variant(visual_form)
+
+        c.create_oval(x-46, 151, x+46, 159, fill='#d8d2c8', outline='')
+        c.create_oval(x-30-foot_shift, 132, x-12-foot_shift, 145, fill=shadow, outline=outline, width=2)
+        c.create_oval(x+12+foot_shift, 132, x+30+foot_shift, 145, fill=shadow, outline=outline, width=2)
+
+        # Page block behind the cover.
+        for i in range(4):
+            dx = 24 + i * 5
+            c.create_rectangle(x-35+dx, y-38+i, x+42+dx, y+39-i, fill='#e8dec7', outline='#baad93', width=1)
+        c.create_polygon(x+18, y-48, x+31, y-58, x+43, y-47, x+38, y-27,
+                         fill=bookmark, outline=outline, width=2)
+        c.create_rectangle(x-43, y-42, x+39, y+42, fill=paper, outline=outline, width=3)
+        c.create_line(x+31, y-36, x+31, y+36, fill='#c7baa2', width=1)
+
+        if variant == '1':
+            # Calm folded-paper hood/collar; keeps Route A face, not Route B's ink core.
+            c.create_polygon(x-42, y+16, x-20, y-7, x, y+8, x+20, y-7, x+42, y+16,
+                             x+32, y+42, x-32, y+42, fill='#eee5cf', outline='#c9bda4', width=1)
+        elif variant == '2':
+            # Approved page-ear direction.
+            c.create_polygon(x-30, y-42, x-18, y-78, x-3, y-44,
+                             fill='#f5edd9', outline=outline, width=2)
+            c.create_polygon(x+4, y-44, x+21, y-79, x+32, y-42,
+                             fill='#f5edd9', outline=outline, width=2)
+            c.create_line(x-22, y-64, x-10, y-50, fill='#c7baa2')
+            c.create_line(x+14, y-63, x+25, y-49, fill='#c7baa2')
+
+        self._draw_face(x-5, y, dark_face=False, state=state)
+        self._draw_action_marks(x, y, state)
+
+    def _draw_ink_family(self, visual_form: str, state: str, bob: int, foot_shift: int) -> None:
+        c = self.canvas
+        x, y = 95, 94 + bob
+        outline = self.palette.outline
+        paper = self.palette.paper
+        shadow = self.palette.paper_shadow
+        bookmark = self.palette.bookmark
+        variant = fallback_variant(visual_form)
+
+        c.create_oval(x-48, 151, x+48, 159, fill='#d8d2c8', outline='')
+        c.create_oval(x-31-foot_shift, 132, x-13-foot_shift, 145, fill=shadow, outline=outline, width=2)
+        c.create_oval(x+13+foot_shift, 132, x+31+foot_shift, 145, fill=shadow, outline=outline, width=2)
+        c.create_polygon(x+25, y-50, x+40, y-62, x+51, y-46, x+42, y-27,
+                         fill=bookmark, outline=outline, width=2)
+
+        if variant == '1':
+            c.create_polygon(x-52, y-30, x-35, y-48, x, y-55, x+35, y-48, x+53, y-28,
+                             x+42, y+45, x+18, y+52, x, y+43, x-18, y+52, x-43, y+45,
+                             fill=paper, outline=outline, width=3)
+        elif variant == '2':
+            c.create_polygon(x-48, y-20, x-28, y-49, x, y-60, x+28, y-49, x+48, y-20,
+                             x+43, y+44, x-43, y+44, fill=paper, outline=outline, width=3)
+            c.create_line(x-33, y-22, x-33, y+28, fill='#b9aa8d', width=2)
+            c.create_line(x+33, y-22, x+33, y+28, fill='#b9aa8d', width=2)
+        else:
+            c.create_oval(x-51, y-49, x+51, y+48, fill=paper, outline=outline, width=3)
+            # Crumpled paper facets around the nest.
+            for dx, dy in ((-38,-30),(-18,-44),(11,-43),(35,-28),(-43,5),(41,8),(-25,34),(23,35)):
+                c.create_polygon(x+dx-8, y+dy, x+dx+2, y+dy-8, x+dx+10, y+dy+5,
+                                 fill='#e8dec7', outline='#c6b99f', width=1)
+
+        c.create_oval(x-32, y-31, x+32, y+31, fill='#292724', outline='#151413', width=2)
+        self._draw_face(x, y, dark_face=True, state=state)
+        self._draw_action_marks(x, y, state)
+
+    def _draw_lantern_family(self, visual_form: str, state: str, bob: int, foot_shift: int) -> None:
+        c = self.canvas
+        x, y = 95, 96 + bob
+        outline = self.palette.outline
+        paper = self.palette.paper
+        shadow = self.palette.paper_shadow
+        bookmark = self.palette.bookmark
+        variant = fallback_variant(visual_form)
+
+        c.create_oval(x-48, 151, x+48, 159, fill='#d8d2c8', outline='')
+        c.create_oval(x-30-foot_shift, 134, x-12-foot_shift, 147, fill=shadow, outline=outline, width=2)
+        c.create_oval(x+12+foot_shift, 134, x+30+foot_shift, 147, fill=shadow, outline=outline, width=2)
+        c.create_arc(x-28, y-73, x+28, y-30, start=0, extent=180, style='arc', outline='#6f6250', width=3)
+        c.create_polygon(x+28, y-50, x+42, y-58, x+49, y-43, x+38, y-31,
+                         fill=bookmark, outline=outline, width=2)
+
+        if variant == '1':
+            # Petal/leaf lantern evolution.
+            for dx in (-48, -32, 32, 48):
+                tip = -1 if dx < 0 else 1
+                c.create_polygon(x+dx, y-5, x+dx+tip*20, y-28, x+dx+tip*13, y+18,
+                                 fill='#f3ead5', outline='#c6b99f', width=1)
+        elif variant == '2':
+            # More sheltered, bookish lantern evolution.
+            c.create_arc(x-42, y-54, x+42, y-12, start=0, extent=180, style='arc', outline='#b8aa91', width=3)
+            c.create_line(x-41, y-33, x-48, y+31, fill='#b8aa91', width=2)
+            c.create_line(x+41, y-33, x+48, y+31, fill='#b8aa91', width=2)
+
+        c.create_polygon(x-45, y-37, x-32, y-54, x+32, y-54, x+45, y-37,
+                         x+38, y+42, x-38, y+42, fill=paper, outline=outline, width=3)
+        c.create_polygon(x-26, y-25, x, y-43, x+26, y-25, x+22, y+25, x, y+36, x-22, y+25,
+                         fill='#292724', outline='#151413', width=2)
+        # Lantern side vents.
+        for side in (-1, 1):
+            for dy in (-15, 4):
+                c.create_rectangle(x+side*34-4, y+dy-5, x+side*34+4, y+dy+5,
+                                   fill='#292724', outline='')
+        self._draw_face(x, y-1, dark_face=True, state=state)
+        self._draw_action_marks(x, y, state)
+
+    def _draw_route_fallback(self, state: str) -> None:
+        visual_form = approved_visual_form(self._visual_form_id)
+        family = fallback_family(visual_form)
+        if family == 'starter':
+            super()._draw()
+            return
+
+        fallback_state = state if state in GEULSSIAL_ANIMATIONS else 'idle'
+        bob, foot_shift = self._pose(fallback_state)
+        self.canvas.delete('all')
+        if family == 'a':
+            self._draw_book_family(visual_form, fallback_state, bob, foot_shift)
+        elif family == 'b':
+            self._draw_ink_family(visual_form, fallback_state, bob, foot_shift)
+        else:
+            self._draw_lantern_family(visual_form, fallback_state, bob, foot_shift)
+        self._draw_dialogue_overlay()
+
     def _draw(self) -> None:
         if self._sprite_cache is None:
             super()._draw()
@@ -68,21 +248,19 @@ class DesktopPetWindowV8(DesktopPetWindowV7):
         sprite_state = self._pet_state
         if sprite_state == 'drop':
             sprite_state = 'idle'
-        if sprite_state not in GEULSSIAL_ANIMATIONS:
-            super()._draw()
-            return
 
-        frames = self._sprite_cache.frames(self._visual_form_id, sprite_state)
-        if not frames:
-            super()._draw()
-            return
+        if sprite_state in GEULSSIAL_ANIMATIONS:
+            frames = self._sprite_cache.frames(self._visual_form_id, sprite_state)
+            if frames:
+                c = self.canvas
+                c.delete('all')
+                image = frames[self._frame % len(frames)]
+                c.create_image(95, 100, image=image, anchor='center')
+                self._draw_dialogue_overlay()
+                return
 
-        # A production state is all-or-nothing: if we reached here the full frame set loaded.
-        c = self.canvas
-        c.delete('all')
-        image = frames[self._frame % len(frames)]
-        c.create_image(95, 100, image=image, anchor='center')
-        self._draw_dialogue_overlay()
+        # Missing/corrupt/incomplete PNGs never crash or reveal unapproved final-form art.
+        self._draw_route_fallback(sprite_state)
 
 
 def run_pet_v8(*, runtime_factory=bootstrap_runtime) -> int:
