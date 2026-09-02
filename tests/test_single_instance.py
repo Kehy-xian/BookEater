@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from bookeater import launch_guard
+from bookeater.services import single_instance
 from bookeater.services.single_instance import (
     MUTEX_PREFIX,
     SingleInstanceGuard,
@@ -70,3 +72,74 @@ def test_context_manager_releases_handle():
 def test_mutex_self_test_is_noop_success_off_windows(monkeypatch):
     monkeypatch.setattr('bookeater.services.single_instance.sys.platform', 'linux')
     assert windows_mutex_self_test() is True
+
+
+def test_windows_mutex_self_test_accepts_first_and_rejects_second(monkeypatch):
+    closed: list[bool] = []
+
+    class Guard:
+        def __init__(self, acquired: bool):
+            self.acquired = acquired
+
+        def close(self):
+            closed.append(self.acquired)
+
+    guards = iter([Guard(True), Guard(False)])
+    monkeypatch.setattr(single_instance.sys, 'platform', 'win32')
+    monkeypatch.setattr(single_instance, 'instance_mutex_name', lambda **kwargs: 'Local\\BookEater-test')
+    monkeypatch.setattr(single_instance, 'acquire_single_instance', lambda **kwargs: next(guards))
+
+    assert single_instance.windows_mutex_self_test() is True
+    assert closed == [False, True]
+
+
+def test_run_guarded_executes_callback_and_releases_mutex(monkeypatch):
+    events: list[str] = []
+
+    class Guard:
+        acquired = True
+
+        def close(self):
+            events.append('close')
+
+    monkeypatch.setattr(launch_guard, 'acquire_single_instance', lambda: Guard())
+    monkeypatch.setattr(launch_guard, '_show_message', lambda *args: events.append('message'))
+
+    def callback():
+        events.append('callback')
+        return 7
+
+    assert launch_guard.run_guarded(callback) == 7
+    assert events == ['callback', 'close']
+
+
+def test_run_guarded_blocks_second_instance_without_running_callback(monkeypatch):
+    events: list[str] = []
+
+    class Guard:
+        acquired = False
+
+        def close(self):
+            events.append('close')
+
+    monkeypatch.setattr(launch_guard, 'acquire_single_instance', lambda: Guard())
+    monkeypatch.setattr(launch_guard, '_show_message', lambda kind, text: events.append(kind))
+
+    def callback():
+        raise AssertionError('second instance must not run')
+
+    assert launch_guard.run_guarded(callback) == 0
+    assert events == ['info']
+
+
+def test_run_guarded_fails_closed_if_mutex_cannot_be_created(monkeypatch):
+    events: list[str] = []
+
+    def fail():
+        raise OSError('mutex unavailable')
+
+    monkeypatch.setattr(launch_guard, 'acquire_single_instance', fail)
+    monkeypatch.setattr(launch_guard, '_show_message', lambda kind, text: events.append(kind))
+
+    assert launch_guard.run_guarded(lambda: 0) == 4
+    assert events == ['error']
