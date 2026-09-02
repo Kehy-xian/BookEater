@@ -12,6 +12,8 @@ from bookeater.pet_sprite import (
     production_animation_available,
     production_frame_paths,
     resolved_frame_paths,
+    sprite_source_form,
+    visual_asset_slug_for_form,
 )
 
 
@@ -31,8 +33,20 @@ def test_approved_forms_have_stable_asset_slugs():
     assert asset_slug_for_form('route_c') == 'lantern'
 
 
-def test_placeholder_final_has_no_production_slug():
+def test_placeholder_final_has_no_own_slug_but_inherits_nearest_approved_visual():
     assert asset_slug_for_form('route_a1_alpha') is None
+    assert sprite_source_form('route_a1_alpha') == 'route_a1'
+    assert visual_asset_slug_for_form('route_a1_alpha') == 'route_a1'
+    assert sprite_source_form('route_c2_beta') == 'route_c2'
+    assert visual_asset_slug_for_form('route_c2_beta') == 'route_c2'
+
+
+def test_inherited_final_uses_parent_production_paths(tmp_path):
+    resource_root = tmp_path
+    sprites = resource_root / 'resources' / 'sprites'
+    expected = _write_complete(sprites, 'route_a1', 'idle')
+    assert production_frame_paths(resource_root, 'route_a1_alpha', 'idle') == expected
+    assert production_animation_available(resource_root, 'route_a1_alpha', 'idle')
 
 
 def test_partial_animation_never_counts_as_ready(tmp_path):
