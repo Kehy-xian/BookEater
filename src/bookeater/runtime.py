@@ -17,6 +17,7 @@ from typing import Any
 
 from .game.growth_routes import lineage_path
 from .game.loop import ReadingFeedService
+from .services.version_backup import VersionBackupError, mark_version_success, prepare_version_transition
 from .storage.sqlite_store import SQLiteGameStore
 from .storage.journal import ReadingJournalStore
 from .storage.milestones import MonsterMilestoneStore
@@ -24,6 +25,7 @@ from .storage.encyclopedia import MonsterEncyclopediaStore
 from .storage.settings import AppSettingsStore
 from .storage.care import MonsterCareStore
 from .storage.draft import ReadingDraftStore
+from .version import APP_VERSION
 
 APP_DIR_NAME = 'BookEater'
 DB_FILENAME = 'bookeater.sqlite3'
@@ -145,6 +147,12 @@ def bootstrap_runtime(
         with probe.open('w', encoding='utf-8') as f:
             f.write('ok')
         probe.unlink(missing_ok=True)
+
+        # If this is the first successful launch of a new app version, protect the complete live
+        # database before constructing stores that may perform schema migrations. Fresh installs do
+        # not have a database yet and therefore skip this backup.
+        prepare_version_transition(data_dir=data, database_path=db_path, current_version=APP_VERSION)
+
         store = SQLiteGameStore(db_path)
         journal = ReadingJournalStore(db_path)
         milestones = MonsterMilestoneStore(db_path)
@@ -155,7 +163,11 @@ def bootstrap_runtime(
 
         for form_id in lineage_path(store.load_state().form_id):
             encyclopedia.unlock(form_id)
-    except (OSError, sqlite3.DatabaseError, ValueError) as exc:
+
+        # Mark only after every local store opens successfully. If startup/migration fails, the old
+        # marker remains and the next attempt will protect the pre-migration database again.
+        mark_version_success(data, APP_VERSION)
+    except (OSError, sqlite3.DatabaseError, ValueError, VersionBackupError) as exc:
         raise RuntimeStartupError('local BookEater data could not be opened safely') from exc
 
     analyzer = LazyLocalAnalyzer(model_dir)
