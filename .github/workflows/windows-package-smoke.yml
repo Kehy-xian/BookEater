@@ -16,6 +16,7 @@ on:
       - 'tools/generate_subroute_sprites.py'
       - 'tools/generate_extended_sprites.py'
       - 'tools/validate_sprite_pack.py'
+      - 'resources/catalog_endpoint.txt'
       - 'resources/sprites/**'
       - 'resources/sprite_archives/**'
       - 'src/bookeater/desktop.py'
@@ -74,11 +75,13 @@ jobs:
           if (-not (Test-Path 'dist/BookEater/BookEater.exe')) { throw 'BookEater.exe missing' }
           $onnx = Get-ChildItem 'dist/BookEater' -Recurse -Filter model.onnx | Select-Object -First 1
           $tok = Get-ChildItem 'dist/BookEater' -Recurse -Filter tokenizer.json | Select-Object -First 1
+          $catalogConfig = Get-ChildItem 'dist/BookEater' -Recurse -Filter catalog_endpoint.txt | Select-Object -First 1
           $spriteReadme = Get-ChildItem 'dist/BookEater' -Recurse -Filter README.txt | Where-Object { $_.FullName -match 'resources[\\/]sprites' } | Select-Object -First 1
           $requiredSlugs = @('paperling','pagedge','inknest','lantern','route_a1','route_a2','route_b1','route_b2','route_c1','route_c2')
           $requiredSuffixes = @('idle_00.png','eat_05.png','walk_03.png','read_02.png','sleep_02.png','talk_01.png','spit_memory_03.png')
           if (-not $onnx) { throw 'bundled model.onnx missing' }
           if (-not $tok) { throw 'bundled tokenizer.json missing' }
+          if (-not $catalogConfig) { throw 'bundled catalog_endpoint.txt missing' }
           if (-not $spriteReadme) { throw 'sprite resource directory missing' }
           foreach ($slug in $requiredSlugs) {
             foreach ($suffix in $requiredSuffixes) {
@@ -117,9 +120,10 @@ jobs:
           먹이기 창의 미제출 메모는 로컬 SQLite에 자동 초안 저장되며 다음 실행/창에서 복구됩니다.
           먹이기 버튼을 누르면 원문과 책 정보가 먼저 저장되고 AI 분석은 그 뒤 백그라운드에서 진행됩니다.
           책 추천 UI는 실제 카탈로그 후보가 연결된 경우에만 작동하며, 취향 정렬은 로컬에서 수행합니다.
+          배포판은 public catalog_endpoint.txt로 HTTPS 프록시 URL을 받을 수 있고, Kakao API 키는 서버에만 둡니다.
           카탈로그 서버가 설정되지 않은 배포본은 임의의 책을 만들어내지 않고 추천을 비활성화합니다.
           기록/서재/도감/기억/대사/돌보기/미니게임/첫 만남/자동실행 기능이 포함되어 있습니다.
-          정식 설치 프로그램/코드 서명/자동 업데이트/카탈로그 서버 배포는 아직 개발 중입니다.
+          정식 설치 프로그램/코드 서명/자동 업데이트/카탈로그 서버 실제 배포는 아직 개발 중입니다.
 
           Build commit: $env:GITHUB_SHA
           "@ | Set-Content -Encoding utf8 'dist/BookEater/README_FIRST.txt'
