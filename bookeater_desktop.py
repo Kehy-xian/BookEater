@@ -6,7 +6,7 @@ import sys
 from bookeater.desktop import run_desktop
 from bookeater.pet_window_v11 import run_pet_v11
 from bookeater.runtime import bootstrap_runtime
-from bookeater.services.catalog import configured_catalog_client
+from bookeater.services.catalog import CatalogClient, configured_catalog_client
 from bookeater.services.data_transfer import SEED_FORMAT, SEED_VERSION
 
 
@@ -16,6 +16,7 @@ def _smoke() -> int:
     analysis = runtime.analyzer.analyze('주인공의 선택이 옳았는지 오래 생각했다.')
     view = runtime.feed_service.current_view()
     state = runtime.store.load_state()
+    catalog = configured_catalog_client({})
     payload = {
         'db_ok': runtime.database_path.exists(),
         'model_loaded': runtime.analyzer.loaded,
@@ -26,9 +27,10 @@ def _smoke() -> int:
         'care_ready': runtime.care is not None,
         'drafts_ready': runtime.drafts is not None,
         'seed_transfer_ready': SEED_FORMAT == 'bookeater.reading-seed' and SEED_VERSION >= 1,
-        # No endpoint is required for startup. Recommendation UI must remain safely disabled until
-        # a real catalog proxy is configured.
-        'catalog_module_ready': configured_catalog_client({}) is None,
+        # Both states are valid: an unreleased/local build may have no proxy, while a release build
+        # may bundle a public HTTPS endpoint. The secret upstream key never belongs in this binary.
+        'catalog_module_ready': catalog is None or isinstance(catalog, CatalogClient),
+        'catalog_configured': catalog is not None,
         'form_id': state.form_id,
         'species': view.species,
     }
