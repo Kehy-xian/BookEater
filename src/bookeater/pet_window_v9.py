@@ -52,6 +52,24 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
             return False
         return True
 
+    def _destructive_data_action_available(self) -> bool:
+        if not self._data_action_available():
+            return False
+        try:
+            draft = self.runtime.drafts.load()
+        except Exception:
+            draft = None
+        if draft is not None:
+            from tkinter import messagebox
+            messagebox.showinfo(
+                '미제출 초안이 있어요',
+                '아직 몬스터에게 먹이지 않은 기록 초안이 남아 있어요.\n'
+                '기록 심기나 초기화 전에 초안을 먼저 먹이거나 비워 주세요.',
+                parent=self.root,
+            )
+            return False
+        return True
+
     def _refresh_after_profile_change(self) -> None:
         self._visual_revision = -1
         self._book_display_to_id.clear()
@@ -87,16 +105,17 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
                 parent=self.root,
             )
             return
+        draft_note = '\n미제출 초안은 아직 기록이 아니므로 내보내기에 포함되지 않습니다.' if self.runtime.drafts.load() else ''
         messagebox.showinfo(
             '내보내기 완료',
             f'책 {summary.book_count}권 · 기록 {summary.note_count}개를 저장했어요.\n'
-            '현재 유전정보·성장흐름·도감·친밀도도 함께 들어 있습니다.\n\n'
+            f'현재 유전정보·성장흐름·도감·친밀도도 함께 들어 있습니다.{draft_note}\n\n'
             f'{destination}',
             parent=self.root,
         )
 
     def plant_reading_seed(self) -> None:
-        if not self._data_action_available():
+        if not self._destructive_data_action_available():
             return
         from tkinter import filedialog, messagebox
 
@@ -155,7 +174,7 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
         )
 
     def reset_reading_profile(self) -> None:
-        if not self._data_action_available():
+        if not self._destructive_data_action_available():
             return
         from tkinter import messagebox, simpledialog
 
