@@ -10,6 +10,7 @@ on:
       - 'requirements-build.txt'
       - 'requirements-local-nlp.txt'
       - 'tools/fetch_e5_model.py'
+      - 'resources/sprites/**'
       - 'src/bookeater/desktop.py'
       - 'src/bookeater/pet_window.py'
       - 'src/bookeater/pet_window_v2.py'
@@ -18,7 +19,9 @@ on:
       - 'src/bookeater/pet_window_v5.py'
       - 'src/bookeater/pet_window_v6.py'
       - 'src/bookeater/pet_window_v7.py'
+      - 'src/bookeater/pet_window_v8.py'
       - 'src/bookeater/pet_art.py'
+      - 'src/bookeater/pet_sprite.py'
       - 'src/bookeater/pet_behavior.py'
       - 'src/bookeater/runtime.py'
       - 'src/bookeater/storage/**'
@@ -47,8 +50,10 @@ jobs:
           if (-not (Test-Path 'dist/BookEater/BookEater.exe')) { throw 'BookEater.exe missing' }
           $onnx = Get-ChildItem 'dist/BookEater' -Recurse -Filter model.onnx | Select-Object -First 1
           $tok = Get-ChildItem 'dist/BookEater' -Recurse -Filter tokenizer.json | Select-Object -First 1
+          $spriteReadme = Get-ChildItem 'dist/BookEater' -Recurse -Filter README.txt | Where-Object { $_.FullName -match 'resources[\\/]sprites' } | Select-Object -First 1
           if (-not $onnx) { throw 'bundled model.onnx missing' }
           if (-not $tok) { throw 'bundled tokenizer.json missing' }
+          if (-not $spriteReadme) { throw 'sprite resource directory missing' }
           Write-Host "EXE bytes=$((Get-Item 'dist/BookEater/BookEater.exe').Length)"
           Write-Host "bundle MB=$([math]::Round(((Get-ChildItem 'dist/BookEater' -Recurse -File | Measure-Object Length -Sum).Sum / 1MB),1))"
       - name: Headless packaged-runtime smoke
@@ -65,22 +70,12 @@ jobs:
           @"
           책먹는 몬스터 - Windows playable development build
 
-          1. 이 폴더 전체를 그대로 유지해 주세요.
-          2. BookEater.exe를 실행하면 작은 투명 글씨알이 바탕화면에 나타나 쉬거나 뽈뽈 돌아다닙니다.
-          3. 가만히 있을 때는 발을 바닥에 둔 채 천천히 숨쉬듯 몸이 움직입니다.
-          4. 첫 만남에는 하늘에서 '콩!' 떨어지는 연출이 있으며 설정에서 켜고 끄거나 다시 볼 수 있습니다.
-          5. 더블클릭 또는 우클릭 → 기록 먹이기로 책별 기록을 계속 추가할 수 있습니다.
-          6. 내 서재에서 책별 기록을 보고 읽는 중/완독/읽고 싶음/잠시 멈춤 상태를 바꿀 수 있습니다.
-          7. 몬스터 도감은 발견한 진화형을 기록하고 아직 아트가 미정인 최종형은 빈 슬롯으로 남깁니다.
-          8. 기억 꺼내기는 실제로 먹인 과거 기록만 다시 보여줍니다.
-          9. TALK 상태의 대사는 현재 성장 혈통과 기록 누적에 따라 달라집니다.
-          10. 이 친구 화면에서 처음 만난 날, 첫 기록을 먹인 날, 함께 쌓은 기록 수를 볼 수 있습니다.
-          11. 돌보기에서 간식/놀아주기/씻기기/글자 잡기 미니게임을 할 수 있으며 독서 진화에는 영향을 주지 않습니다.
-          12. 설정에서 Windows 시작 시 자동실행을 켜고 끌 수 있습니다.
-          13. 실제 도서 추천은 실재 카탈로그 후보만 사용하며, 현재 빌드의 추천 공급자 연결은 아직 준비 중입니다.
-          14. 승인된 캐릭터 콘셉트와 실제 투명 PNG 스프라이트는 구분되어 있습니다. 현재 화면은 벡터 fallback입니다.
-          15. 현재 빌드는 개발용 플레이어블입니다. 코드 서명/정식 설치 프로그램/자동 업데이트는 아직 포함되지 않습니다.
-          16. 독서기록과 성장 데이터는 사용자 PC의 로컬 저장소에 저장됩니다.
+          BookEater.exe를 실행하면 작은 투명 몬스터가 바탕화면에서 쉬고 돌아다닙니다.
+          현재 A/B/C 진화 혈통이 단일 성장 체계이며, 세계 주제는 별도 외형 모티프로 누적됩니다.
+          실제 투명 PNG 프레임이 완성된 form/state는 자동으로 production sprite를 사용하고,
+          프레임이 없거나 깨졌으면 안전하게 벡터 fallback을 사용합니다.
+          기록/서재/도감/기억/대사/돌보기/미니게임/첫 만남/자동실행 기능이 포함되어 있습니다.
+          정식 설치 프로그램/코드 서명/자동 업데이트/실제 도서 추천 공급자 연결은 아직 개발 중입니다.
 
           Build commit: $env:GITHUB_SHA
           "@ | Set-Content -Encoding utf8 'dist/BookEater/README_FIRST.txt'
