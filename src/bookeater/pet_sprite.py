@@ -26,6 +26,13 @@ def default_override_root(data_dir: str | Path) -> Path:
     return Path(data_dir) / ART_OVERRIDE_DIRNAME
 
 
+def _runtime_override_root() -> Path:
+    # Lazy import keeps the sprite contract usable in isolation while making the normal desktop
+    # shell automatically follow BOOKEATER_DATA_DIR / platform-local data-directory rules.
+    from .runtime import default_data_dir
+    return default_override_root(default_data_dir())
+
+
 def asset_slug_for_form(form_id: str) -> str | None:
     return catalog_entry(form_id).asset_slug
 
@@ -110,7 +117,7 @@ class TkSpriteCache:
     ):
         self.tk = tk_module
         self.resource_root = Path(resource_root)
-        self.override_root = Path(override_root) if override_root is not None else None
+        self.override_root = Path(override_root) if override_root is not None else _runtime_override_root()
         self._cache: dict[tuple[str, str], tuple[Any, ...] | None] = {}
 
     def frames(self, form_id: str, state: str) -> tuple[Any, ...] | None:
