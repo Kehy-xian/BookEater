@@ -5,11 +5,18 @@ from __future__ import annotations
 The desktop never sends reading notes, hidden growth stats or lineage to this service. It only asks
 for a generic discovery pool (or an explicit user search), then ranks those concrete books locally.
 Production endpoints must use HTTPS; plain HTTP is accepted only for localhost development.
+
+Endpoint selection is public configuration, not a credential:
+1. BOOKEATER_CATALOG_ENDPOINT environment override (development/diagnostics)
+2. bundled resources/catalog_endpoint.txt (normal release build)
+3. no endpoint -> recommendation UI stays safely disabled
 """
 
 from dataclasses import dataclass
 import json
 import os
+from pathlib import Path
+import sys
 from typing import Any, Callable
 from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
 from urllib.request import Request, urlopen
@@ -17,6 +24,7 @@ from urllib.request import Request, urlopen
 from .recommendations import BookCandidate
 
 CATALOG_ENDPOINT_ENV = 'BOOKEATER_CATALOG_ENDPOINT'
+CATALOG_ENDPOINT_FILE = Path('resources/catalog_endpoint.txt')
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 
 
@@ -44,10 +52,40 @@ def _valid_endpoint(url: str) -> str:
     return value.rstrip('/')
 
 
-def catalog_endpoint_from_env(environ: dict[str, str] | None = None) -> str | None:
+def _resource_root() -> Path:
+    bundle = getattr(sys, '_MEIPASS', None)
+    if bundle:
+        return Path(bundle)
+    # catalog.py lives at <repo>/src/bookeater/services/catalog.py
+    return Path(__file__).resolve().parents[3]
+
+
+def _bundled_endpoint(resources: str | Path | None = None) -> str | None:
+    root = Path(resources) if resources is not None else _resource_root()
+    path = root / CATALOG_ENDPOINT_FILE
+    if not path.is_file():
+        return None
+    try:
+        lines = path.read_text(encoding='utf-8').splitlines()
+    except (OSError, UnicodeDecodeError):
+        return None
+    for line in lines:
+        value = line.strip()
+        if value and not value.startswith('#'):
+            return value
+    return None
+
+
+def catalog_endpoint_from_env(
+    environ: dict[str, str] | None = None,
+    *,
+    resources: str | Path | None = None,
+) -> str | None:
     env = os.environ if environ is None else environ
     raw = str(env.get(CATALOG_ENDPOINT_ENV, '') or '').strip()
-    return raw or None
+    if raw:
+        return raw
+    return _bundled_endpoint(resources)
 
 
 def _append_query(url: str, **params: object) -> str:
@@ -131,8 +169,12 @@ class CatalogClient:
         return self._get('v1/catalog/search', q=q, limit=max(1, min(100, int(limit))))
 
 
-def configured_catalog_client(environ: dict[str, str] | None = None) -> CatalogClient | None:
-    endpoint = catalog_endpoint_from_env(environ)
+def configured_catalog_client(
+    environ: dict[str, str] | None = None,
+    *,
+    resources: str | Path | None = None,
+) -> CatalogClient | None:
+    endpoint = catalog_endpoint_from_env(environ, resources=resources)
     if not endpoint:
         return None
     try:
