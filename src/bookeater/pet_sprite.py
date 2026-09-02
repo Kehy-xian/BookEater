@@ -3,14 +3,15 @@ from __future__ import annotations
 """Route-aware production sprite discovery and Tk cache.
 
 Art is intentionally hot-swappable. Packaged production sprites are the stable default, while a
-complete animation placed in the local ``art_overrides`` directory may replace that state without
-changing reading, growth, persistence, or NLP code. We never mix partial override frames with
-packaged frames: a state comes from one complete source or falls back safely.
+complete animation placed in the local ``art_overrides`` store may replace that state without
+changing reading, growth, persistence, or NLP code. Versioned overrides are activated atomically;
+legacy flat overrides remain readable for development compatibility.
 """
 
 from pathlib import Path
 from typing import Any
 
+from .art_override_store import override_source_root
 from .game.form_catalog import catalog_entry
 from .pet_art import GEULSSIAL_ANIMATIONS, complete_animation_available, expected_frame_paths
 
@@ -27,8 +28,6 @@ def default_override_root(data_dir: str | Path) -> Path:
 
 
 def _runtime_override_root() -> Path:
-    # Lazy import keeps the sprite contract usable in isolation while making the normal desktop
-    # shell automatically follow BOOKEATER_DATA_DIR / platform-local data-directory rules.
     from .runtime import default_data_dir
     return default_override_root(default_data_dir())
 
@@ -59,6 +58,10 @@ def production_frame_paths(
     return expected_frame_paths(sprite_root(resource_root), slug, state)
 
 
+def _override_asset_root(override_root: str | Path, slug: str) -> Path:
+    return override_source_root(Path(override_root), slug)
+
+
 def override_animation_available(
     override_root: str | Path | None,
     form_id: str,
@@ -69,7 +72,7 @@ def override_animation_available(
     slug = asset_slug_for_form(form_id)
     if not slug or state not in GEULSSIAL_ANIMATIONS:
         return False
-    return complete_animation_available(Path(override_root), slug, state)
+    return complete_animation_available(_override_asset_root(override_root, slug), slug, state)
 
 
 def override_frame_paths(
@@ -82,7 +85,7 @@ def override_frame_paths(
     slug = asset_slug_for_form(form_id)
     if not slug or state not in GEULSSIAL_ANIMATIONS:
         return ()
-    return expected_frame_paths(Path(override_root), slug, state)
+    return expected_frame_paths(_override_asset_root(override_root, slug), slug, state)
 
 
 def resolved_frame_paths(
@@ -92,12 +95,7 @@ def resolved_frame_paths(
     *,
     override_root: str | Path | None = None,
 ) -> tuple[Path, ...]:
-    """Return one complete animation source, preferring a local art override.
-
-    A partial override never borrows missing frames from the packaged bundle. This makes an art
-    replacement atomic at the animation-state level and keeps half-copied development assets from
-    producing mixed designs on screen.
-    """
+    """Return one complete animation source, preferring a local art override."""
     if override_animation_available(override_root, form_id, state):
         return override_frame_paths(override_root, form_id, state)
     if production_animation_available(resource_root, form_id, state):
@@ -147,7 +145,6 @@ class TkSpriteCache:
                 self._cache[key] = images
                 return images
 
-        # Both image sources are unavailable/corrupt: desktop shell will draw the vector fallback.
         self._cache[key] = None
         return None
 
