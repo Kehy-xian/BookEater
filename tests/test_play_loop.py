@@ -148,17 +148,21 @@ def test_bookkeeping_note_cannot_mutate_hidden_traits_even_with_strong_fake_labe
     }
     store, _, service = make_service(tmp_path, StaticAnalyzer(payload))
     service.submit('meta', 'ISBN 978-1-2345-6789-0이고 312쪽까지 읽었다.')
-    assert store.load_state().stats == {}
+    state = store.load_state()
+    assert state.stats == {}
+    assert state.recent_stats == {}
+    assert state.entry_count == 0
 
 
-def test_five_consistent_notes_reach_first_form_without_exposing_recipe(tmp_path):
+def test_five_consistent_notes_reach_route_a_without_exposing_recipe(tmp_path):
     store, _, service = make_service(tmp_path)
     last = None
     for i in range(5):
         last = service.submit(f't{i}', f'이 선택이 옳은지 의미를 오래 생각했다. {i}')
     assert last is not None and last.growth is not None
     assert last.growth.stage == 1
-    assert last.growth.species == '생각콩'
+    assert last.growth.species == 'Route A'
+    assert store.load_state().form_id == 'route_a'
     public = json.dumps(last.to_public_dict(), ensure_ascii=False)
     for token in FORBIDDEN_PUBLIC_TOKENS:
         assert token not in public
@@ -200,7 +204,7 @@ def test_blank_note_is_rejected_before_any_row_is_created(tmp_path):
     assert store.count_notes() == 0
 
 
-def test_many_neutral_notes_can_advance_age_but_not_invent_tendency(tmp_path):
+def test_many_neutral_notes_age_the_history_but_do_not_force_evolution(tmp_path):
     store, _, service = make_service(tmp_path, StaticAnalyzer(payload={}))
     for i in range(45):
         service.submit(f'n{i}', f'오늘 읽은 기록 {i}')
@@ -208,5 +212,7 @@ def test_many_neutral_notes_can_advance_age_but_not_invent_tendency(tmp_path):
     assert state.entry_count == 45
     assert state.stats == {}
     assert state.current_base is None
-    assert state.stage == 3
-    assert state.species == '이름없는 서고지기'
+    # Count thresholds make evolution eligible, but a route is never invented without evidence.
+    assert state.stage == 0
+    assert state.form_id == 'starter'
+    assert state.species == '글씨알'
