@@ -28,7 +28,7 @@ def test_fed_records_persist_and_unlock_route_lineage(tmp_path):
     encyclopedia = MonsterEncyclopediaStore(db)
     service = ReadingFeedService(store, ThoughtAnalyzer(), encyclopedia=encyclopedia)
 
-    for i in range(5):
+    for i in range(16):
         service.submit(f'n{i}', f'이 선택의 의미를 오래 생각했다 {i}')
 
     state = store.load_state()
