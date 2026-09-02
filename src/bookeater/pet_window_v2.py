@@ -268,3 +268,4 @@ def run_pet_v2(*, runtime_factory=bootstrap_runtime) -> int:
         root.destroy()
         return 2
     DesktopPetWindowV2(runtime).run()
+    return 0
