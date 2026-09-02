@@ -11,19 +11,23 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Protocol
 
 from .evolution import resolve_evolution
-from .growth_route_resolver import resolve_growth_route
-from .growth_routes import lineage_path
+from .growth_route_resolver import GrowthRouteDecision, resolve_growth_route
+from .growth_routes import get_growth_form, lineage_path
 from .nutrition import (
     NUTRITION_POLICY_VERSION,
+    GrowthNutrition,
     _bookkeeping_only,
     apply_growth_nutrition,
     project_growth_nutrition,
 )
-from .presentation import PublicGrowthView, generic_feed_line, public_growth_view
+from .presentation import PublicGrowthView, generic_feed_line
+from .route_presentation import route_public_growth_view
 from bookeater.storage.sqlite_store import RevisionConflict, SQLiteGameStore
 
 
 PENDING_MESSAGE = '기록은 잘 챙겨뒀다. 지금은 잠깐 우물거리는 중이라 조금 뒤에 다시 먹어볼 수 있다.'
+RECENT_DECAY = 0.82
+RECENT_FLOOR = 0.03
 
 
 class Analyzer(Protocol):
@@ -76,13 +80,34 @@ def outcome_from_public_dict(payload: Mapping[str, Any] | None) -> FeedOutcome |
     return FeedOutcome(feed_id, status, message, _growth_from_dict(payload.get('growth')))
 
 
+def update_recent_signature(
+    previous: Mapping[str, float] | None,
+    nutrition: GrowthNutrition,
+    *,
+    decay: float = RECENT_DECAY,
+) -> dict[str, float]:
+    """Maintain a compact recent trajectory without storing per-note classifier diagnostics."""
+    out: dict[str, float] = {}
+    decay = min(0.99, max(0.0, float(decay)))
+    for key, value in (previous or {}).items():
+        try:
+            decayed = max(0.0, float(value)) * decay
+        except (TypeError, ValueError):
+            continue
+        if decayed >= RECENT_FLOOR:
+            out[str(key)] = decayed
+    for group in (nutrition.response, nutrition.world):
+        for key, value in group.items():
+            out[str(key)] = out.get(str(key), 0.0) + max(0.0, float(value))
+    return out
+
+
 class ReadingFeedService:
     """Save first, analyze second, mutate growth only in one atomic commit.
 
-    A local-model failure therefore cannot lose the user's note. The entry stays pending and
-    can be retried after restart. A duplicated click/feed id cannot grow the monster twice.
-    The new A/B/C art lineage is persisted alongside the legacy public phenotype so route
-    collection can advance without exposing hidden classification details.
+    The approved A/B/C route tree is now the single player-facing phenotype. The older reaction
+    evolution helper remains only to preserve the hidden current_base field for compatibility with
+    existing local databases; its old species names no longer drive UI or encyclopedia identity.
     """
 
     def __init__(
@@ -105,8 +130,6 @@ class ReadingFeedService:
     def _unlock_lineage(self, form_id: str) -> None:
         if self.encyclopedia is None:
             return
-        # Encyclopedia sync is secondary to the atomic reading commit. If a local catalog write
-        # ever fails, startup reconciliation can recover it from monster_state.form_id later.
         try:
             for ancestor in lineage_path(form_id):
                 self.encyclopedia.unlock(ancestor)
@@ -143,17 +166,27 @@ class ReadingFeedService:
         for _ in range(self.max_revision_retries):
             state = self.store.load_state()
             next_stats = apply_growth_nutrition(state.stats, nutrition)
-            next_count = state.entry_count + (0 if _bookkeeping_only(note.note_text) else 1)
+            is_bookkeeping = _bookkeeping_only(note.note_text)
+            next_count = state.entry_count + (0 if is_bookkeeping else 1)
+            next_recent = (
+                dict(state.recent_stats)
+                if is_bookkeeping
+                else update_recent_signature(state.recent_stats, nutrition)
+            )
 
-            # Keep the established public phenotype for backwards compatibility while the new
-            # approved art tree gets its own permanent lineage pointer.
-            decision = resolve_evolution(next_stats, next_count, current_base=state.current_base)
+            # Preserve only the legacy hidden base pointer; all public identity comes from routes.
+            legacy = resolve_evolution(next_stats, next_count, current_base=state.current_base)
             route_decision = resolve_growth_route(
                 next_stats,
                 next_count,
+                recent_stats=next_recent,
                 current_form=state.form_id,
             )
-            view = public_growth_view(decision, previous_stage=state.stage)
+            view = route_public_growth_view(
+                route_decision,
+                next_stats,
+                previous_form=state.form_id,
+            )
             outcome = FeedOutcome(
                 note.feed_id,
                 'fed',
@@ -166,14 +199,15 @@ class ReadingFeedService:
                     feed_id=note.feed_id,
                     expected_revision=state.revision,
                     entry_count=next_count,
-                    current_base=decision.base_trait,
-                    stage=decision.stage,
-                    species=decision.species,
+                    current_base=legacy.base_trait,
+                    stage=route_decision.tier,
+                    species=view.species,
                     stats=next_stats,
                     public_payload=payload,
                     model_version=model_version,
                     nutrition_policy=NUTRITION_POLICY_VERSION,
                     form_id=route_decision.form_id,
+                    recent_stats=next_recent,
                 )
             except RevisionConflict:
                 continue
@@ -186,8 +220,14 @@ class ReadingFeedService:
 
     def current_view(self) -> PublicGrowthView:
         state = self.store.load_state()
-        decision = resolve_evolution(state.stats, state.entry_count, current_base=state.current_base)
-        return public_growth_view(decision, previous_stage=state.stage)
+        form = get_growth_form(state.form_id)
+        decision = GrowthRouteDecision(
+            form_id=form.form_id,
+            tier=form.tier,
+            delayed=False,
+            internal_reason='persisted current route',
+        )
+        return route_public_growth_view(decision, state.stats, previous_form=state.form_id)
 
     def retry_pending(self, *, limit: int = 50) -> list[FeedOutcome]:
         outcomes: list[FeedOutcome] = []
