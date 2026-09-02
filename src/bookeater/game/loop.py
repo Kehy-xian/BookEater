@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Protocol
 
 from .evolution import resolve_evolution
+from .growth_route_resolver import resolve_growth_route
+from .growth_routes import lineage_path
 from .nutrition import (
     NUTRITION_POLICY_VERSION,
     _bookkeeping_only,
@@ -28,6 +30,10 @@ class Analyzer(Protocol):
     def analyze(self, text: str) -> Mapping[str, Any]: ...
 
 
+class Encyclopedia(Protocol):
+    def unlock(self, form_id: str): ...
+
+
 @dataclass(frozen=True)
 class FeedOutcome:
     feed_id: str
@@ -36,8 +42,6 @@ class FeedOutcome:
     growth: PublicGrowthView | None
 
     def to_public_dict(self) -> dict[str, Any]:
-        # Explicit allow-list serialization is deliberate. Adding an internal field to this
-        # class later must not accidentally expose it to UI or persisted public receipts.
         return {
             'feed_id': self.feed_id,
             'status': self.status,
@@ -77,16 +81,37 @@ class ReadingFeedService:
 
     A local-model failure therefore cannot lose the user's note. The entry stays pending and
     can be retried after restart. A duplicated click/feed id cannot grow the monster twice.
+    The new A/B/C art lineage is persisted alongside the legacy public phenotype so route
+    collection can advance without exposing hidden classification details.
     """
 
-    def __init__(self, store: SQLiteGameStore, analyzer: Analyzer, *, max_revision_retries: int = 5):
+    def __init__(
+        self,
+        store: SQLiteGameStore,
+        analyzer: Analyzer,
+        *,
+        encyclopedia: Encyclopedia | None = None,
+        max_revision_retries: int = 5,
+    ):
         self.store = store
         self.analyzer = analyzer
+        self.encyclopedia = encyclopedia
         self.max_revision_retries = max(1, int(max_revision_retries))
 
     @staticmethod
     def _pending(feed_id: str) -> FeedOutcome:
         return FeedOutcome(str(feed_id), 'pending', PENDING_MESSAGE, None)
+
+    def _unlock_lineage(self, form_id: str) -> None:
+        if self.encyclopedia is None:
+            return
+        # Encyclopedia sync is secondary to the atomic reading commit. If a local catalog write
+        # ever fails, startup reconciliation can recover it from monster_state.form_id later.
+        try:
+            for ancestor in lineage_path(form_id):
+                self.encyclopedia.unlock(ancestor)
+        except Exception:
+            pass
 
     def submit(self, feed_id: str, note_text: str) -> FeedOutcome:
         note = self.store.record_note(feed_id, note_text)
@@ -103,13 +128,14 @@ class ReadingFeedService:
         if note.status == 'fed':
             cached = outcome_from_public_dict(note.public_payload)
             if cached is not None:
+                self._unlock_lineage(self.store.load_state().form_id)
                 return cached
 
         try:
             raw = self.analyzer.analyze(note.note_text)
             analysis: Mapping[str, Any] = raw if isinstance(raw, Mapping) else {}
             nutrition = project_growth_nutrition(note.note_text, analysis)
-        except Exception as exc:  # save-first policy: keep the note pending, never lose it
+        except Exception as exc:
             self.store.mark_pending_error(note.feed_id, type(exc).__name__)
             return self._pending(note.feed_id)
 
@@ -117,10 +143,16 @@ class ReadingFeedService:
         for _ in range(self.max_revision_retries):
             state = self.store.load_state()
             next_stats = apply_growth_nutrition(state.stats, nutrition)
-            # A real reading response may be neutral/ambiguous and still age the creature, but
-            # pure bookkeeping such as ISBN, return date or reading-position notes must not.
             next_count = state.entry_count + (0 if _bookkeeping_only(note.note_text) else 1)
+
+            # Keep the established public phenotype for backwards compatibility while the new
+            # approved art tree gets its own permanent lineage pointer.
             decision = resolve_evolution(next_stats, next_count, current_base=state.current_base)
+            route_decision = resolve_growth_route(
+                next_stats,
+                next_count,
+                current_form=state.form_id,
+            )
             view = public_growth_view(decision, previous_stage=state.stage)
             outcome = FeedOutcome(
                 note.feed_id,
@@ -141,11 +173,11 @@ class ReadingFeedService:
                     public_payload=payload,
                     model_version=model_version,
                     nutrition_policy=NUTRITION_POLICY_VERSION,
+                    form_id=route_decision.form_id,
                 )
             except RevisionConflict:
-                # Another note advanced the aggregate state. Recompute phenotype from the new
-                # snapshot instead of losing either meal or overwriting a concurrent update.
                 continue
+            self._unlock_lineage(route_decision.form_id)
             cached = outcome_from_public_dict(committed)
             return cached if cached is not None else outcome
 
