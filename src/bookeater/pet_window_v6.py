@@ -2,10 +2,15 @@ from __future__ import annotations
 
 """Desktop-pet V6: optional first-meeting drop animation and per-user Windows autostart."""
 
+import threading
+import webbrowser
+
 from .pet_behavior import PetMotion
 from .pet_window_v5 import DesktopPetWindowV5
-from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime
+from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime, resource_root
+from .services.update_check import configured_update_checker
 from .services.windows_autostart import can_enable_autostart, is_autostart_enabled, set_autostart
+from .version import APP_VERSION
 
 
 class DesktopPetWindowV6(DesktopPetWindowV5):
@@ -69,7 +74,7 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
 
     def open_settings_panel(self) -> None:
         tk, ttk = self.tk, self.ttk
-        win = self._new_panel('설정', '430x300')
+        win = self._new_panel('설정', '430x430')
         body = ttk.Frame(win, padding=18)
         body.pack(fill='both', expand=True)
         ttk.Label(body, text='설정', font=('', 18, 'bold')).pack(anchor='w')
@@ -122,7 +127,75 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
                 wraplength=380,
             ).pack(anchor='w')
 
-        ttk.Label(body, textvariable=msg, wraplength=380).pack(anchor='w', pady=(18, 0))
+        ttk.Separator(body).pack(fill='x', pady=(18, 10))
+        update_row = ttk.Frame(body)
+        update_row.pack(fill='x')
+        ttk.Label(update_row, text=f'현재 버전 {APP_VERSION}').pack(side='left')
+        update_url = {'value': None}
+
+        def open_update_page() -> None:
+            url = update_url['value']
+            if url:
+                webbrowser.open(url)
+
+        download_button = ttk.Button(update_row, text='다운로드 페이지', command=open_update_page, state='disabled')
+        download_button.pack(side='right')
+
+        update_button = ttk.Button(body, text='업데이트 확인')
+        update_button.pack(anchor='w', pady=(7, 0))
+
+        def finish_update_check(result=None, error: str | None = None) -> None:
+            try:
+                if not win.winfo_exists():
+                    return
+            except tk.TclError:
+                return
+            update_button.configure(state='normal')
+            if error:
+                msg.set(error)
+                return
+            if result is None:
+                msg.set('업데이트 서버가 아직 연결되지 않았어요. 현재 버전을 계속 사용할 수 있습니다.')
+                return
+            if result.update_available:
+                update_url['value'] = result.manifest.installer_url
+                download_button.configure(state='normal')
+                text = f'새 버전 {result.manifest.latest_version}이 있어요.'
+                if result.manifest.notes:
+                    text += ' ' + result.manifest.notes[:180]
+                msg.set(text)
+            else:
+                update_url['value'] = None
+                download_button.configure(state='disabled')
+                msg.set('현재 버전이 최신입니다.')
+
+        def check_update() -> None:
+            update_button.configure(state='disabled')
+            download_button.configure(state='disabled')
+            update_url['value'] = None
+            msg.set('업데이트 정보를 확인하는 중…')
+            checker = configured_update_checker(resource_root=resource_root())
+            if checker is None:
+                finish_update_check(None)
+                return
+
+            def work() -> None:
+                try:
+                    result = checker.check(current_version=APP_VERSION)
+                    win.after(0, lambda: finish_update_check(result))
+                except Exception:
+                    win.after(0, lambda: finish_update_check(error='업데이트 정보를 확인하지 못했어요. 기존 앱은 그대로 사용할 수 있습니다.'))
+
+            threading.Thread(target=work, name='bookeater-update-check', daemon=True).start()
+
+        update_button.configure(command=check_update)
+        ttk.Label(
+            body,
+            text='업데이트 확인은 버튼을 눌렀을 때만 실행되며, 앱이 스스로 설치파일을 덮어쓰지는 않습니다.',
+            wraplength=380,
+        ).pack(anchor='w', pady=(5, 0))
+
+        ttk.Label(body, textvariable=msg, wraplength=380).pack(anchor='w', pady=(16, 0))
 
 
 def run_pet_v6(*, runtime_factory=bootstrap_runtime) -> int:
