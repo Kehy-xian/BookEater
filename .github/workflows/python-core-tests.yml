@@ -17,6 +17,7 @@ on:
       - 'src/bookeater/pet_window_v6.py'
       - 'src/bookeater/pet_window_v7.py'
       - 'src/bookeater/pet_window_v8.py'
+      - 'src/bookeater/pet_window_v9.py'
       - 'src/bookeater/pet_art.py'
       - 'src/bookeater/pet_sprite.py'
       - 'src/bookeater/pet_fallback_forms.py'
@@ -24,6 +25,7 @@ on:
       - 'src/bookeater/art_override_store.py'
       - 'src/bookeater/pet_behavior.py'
       - 'src/bookeater/__main__.py'
+      - 'bookeater_desktop.py'
       - 'tools/validate_sprite_pack.py'
       - 'tools/install_sprite_override.py'
       - 'tools/generate_paperling_sprites.py'
@@ -43,6 +45,7 @@ on:
       - 'tests/test_recommendation_ranker.py'
       - 'tests/test_app_settings.py'
       - 'tests/test_care_store.py'
+      - 'tests/test_data_transfer.py'
       - 'tests/test_growth_presentation.py'
       - 'tests/test_growth_noise_robustness.py'
       - 'tests/test_growth_nutrition.py'
@@ -75,4 +78,4 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: python -m pip install pytest Pillow
-      - run: pytest -q tests/test_layered_evolution.py tests/test_growth_routes.py tests/test_growth_route_resolver.py tests/test_growth_route_reachability.py tests/test_growth_route_persistence.py tests/test_route_presentation_and_recent.py tests/test_form_catalog.py tests/test_memory_service.py tests/test_dialogue_service.py tests/test_recommendation_ranker.py tests/test_app_settings.py tests/test_care_store.py tests/test_growth_presentation.py tests/test_growth_noise_robustness.py tests/test_growth_nutrition.py tests/test_growth_nutrition_v14.py tests/test_growth_nutrition_v15.py tests/test_growth_nutrition_v16.py tests/test_play_loop.py tests/test_runtime.py tests/test_desktop_public_contract.py tests/test_reading_journal.py tests/test_monster_milestones.py tests/test_monster_encyclopedia.py tests/test_pet_art_contract.py tests/test_pet_sprite_contract.py tests/test_pet_fallback_forms.py tests/test_pet_route_fallback_render.py tests/test_sprite_validation.py tests/test_art_override_store.py tests/test_generated_paperling_sprites.py tests/test_generated_route_sprites.py tests/test_generated_subroute_sprites.py tests/test_generated_extended_sprites.py tests/test_pet_behavior.py
+      - run: pytest -q tests/test_layered_evolution.py tests/test_growth_routes.py tests/test_growth_route_resolver.py tests/test_growth_route_reachability.py tests/test_growth_route_persistence.py tests/test_route_presentation_and_recent.py tests/test_form_catalog.py tests/test_memory_service.py tests/test_dialogue_service.py tests/test_recommendation_ranker.py tests/test_app_settings.py tests/test_care_store.py tests/test_data_transfer.py tests/test_growth_presentation.py tests/test_growth_noise_robustness.py tests/test_growth_nutrition.py tests/test_growth_nutrition_v14.py tests/test_growth_nutrition_v15.py tests/test_growth_nutrition_v16.py tests/test_play_loop.py tests/test_runtime.py tests/test_desktop_public_contract.py tests/test_reading_journal.py tests/test_monster_milestones.py tests/test_monster_encyclopedia.py tests/test_pet_art_contract.py tests/test_pet_sprite_contract.py tests/test_pet_fallback_forms.py tests/test_pet_route_fallback_render.py tests/test_sprite_validation.py tests/test_art_override_store.py tests/test_generated_paperling_sprites.py tests/test_generated_route_sprites.py tests/test_generated_subroute_sprites.py tests/test_generated_extended_sprites.py tests/test_pet_behavior.py
