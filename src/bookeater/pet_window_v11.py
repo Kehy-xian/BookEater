@@ -3,8 +3,8 @@ from __future__ import annotations
 """Desktop-pet V11: crash-resistant note drafts and save-first submission.
 
 Committed reading records were already transactional; this version protects the only meaningful
-remaining loss window: text typed in the feed panel but not yet submitted.  Drafts autosave locally
-and are restored on the next panel/app launch.  On submit, the raw note and its book context are
+remaining loss window: text typed in the feed panel but not yet submitted. Drafts autosave locally
+and are restored on the next panel/app launch. On submit, the raw note and its book context are
 written synchronously before semantic analysis starts in a background thread.
 """
 
@@ -16,7 +16,9 @@ from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime
 
 
 class DesktopPetWindowV11(DesktopPetWindowV10):
-    DRAFT_DEBOUNCE_MS = 900
+    # Throttle, not debounce: continuous typing still reaches SQLite at least about once per this
+    # interval instead of postponing the save forever until the user pauses.
+    DRAFT_AUTOSAVE_MS = 1200
 
     def open_feed_panel(self) -> None:
         if self._busy:
@@ -117,19 +119,26 @@ class DesktopPetWindowV11(DesktopPetWindowV10):
             flush_draft(announce=True)
 
         def schedule_save(_event=None) -> None:
-            old = save_job['id']
-            if old is not None:
-                try:
-                    win.after_cancel(old)
-                except tk.TclError:
-                    pass
-            save_job['id'] = win.after(self.DRAFT_DEBOUNCE_MS, autosave_now)
+            # Do not cancel an already scheduled save. This makes autosave a throttle and bounds
+            # the unsaved window even when key-release events arrive continuously for minutes.
+            if save_job['id'] is None:
+                save_job['id'] = win.after(self.DRAFT_AUTOSAVE_MS, autosave_now)
 
         combo.bind('<<ComboboxSelected>>', schedule_save)
         progress_entry.bind('<KeyRelease>', schedule_save)
         note.bind('<KeyRelease>', schedule_save)
 
+        def cancel_pending_save() -> None:
+            job = save_job['id']
+            save_job['id'] = None
+            if job is not None:
+                try:
+                    win.after_cancel(job)
+                except tk.TclError:
+                    pass
+
         def close_panel() -> None:
+            cancel_pending_save()
             if not submitted['yes']:
                 flush_draft()
             win.destroy()
@@ -165,6 +174,7 @@ class DesktopPetWindowV11(DesktopPetWindowV10):
                 return
 
             submitted['yes'] = True
+            cancel_pending_save()
             self._busy = True
             self._pet_state = 'eat'
             self._eat_frames = 12
