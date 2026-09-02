@@ -22,6 +22,7 @@ from .storage.journal import ReadingJournalStore
 from .storage.milestones import MonsterMilestoneStore
 from .storage.encyclopedia import MonsterEncyclopediaStore
 from .storage.settings import AppSettingsStore
+from .storage.care import MonsterCareStore
 
 APP_DIR_NAME = 'BookEater'
 DB_FILENAME = 'bookeater.sqlite3'
@@ -119,6 +120,7 @@ class BookEaterRuntime:
     milestones: MonsterMilestoneStore
     encyclopedia: MonsterEncyclopediaStore
     settings: AppSettingsStore
+    care: MonsterCareStore
     analyzer: LazyLocalAnalyzer
     feed_service: ReadingFeedService
 
@@ -146,6 +148,7 @@ def bootstrap_runtime(
         milestones = MonsterMilestoneStore(db_path)
         encyclopedia = MonsterEncyclopediaStore(db_path)
         settings = AppSettingsStore(db_path)
+        care = MonsterCareStore(db_path)
 
         for form_id in lineage_path(store.load_state().form_id):
             encyclopedia.unlock(form_id)
@@ -155,5 +158,5 @@ def bootstrap_runtime(
     analyzer = LazyLocalAnalyzer(model_dir)
     service = ReadingFeedService(store, analyzer, encyclopedia=encyclopedia)
     return BookEaterRuntime(
-        data, db_path, model_dir, store, journal, milestones, encyclopedia, settings, analyzer, service
+        data, db_path, model_dir, store, journal, milestones, encyclopedia, settings, care, analyzer, service
     )
