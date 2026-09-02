@@ -4,8 +4,9 @@ import json
 import sys
 
 from bookeater.desktop import run_desktop
-from bookeater.pet_window_v8 import run_pet_v8
+from bookeater.pet_window_v9 import run_pet_v9
 from bookeater.runtime import bootstrap_runtime
+from bookeater.services.data_transfer import SEED_FORMAT, SEED_VERSION
 
 
 def _smoke() -> int:
@@ -22,6 +23,7 @@ def _smoke() -> int:
         'encyclopedia_ready': runtime.encyclopedia is not None,
         'settings_ready': runtime.settings is not None,
         'care_ready': runtime.care is not None,
+        'seed_transfer_ready': SEED_FORMAT == 'bookeater.reading-seed' and SEED_VERSION >= 1,
         'form_id': state.form_id,
         'species': view.species,
     }
@@ -29,7 +31,7 @@ def _smoke() -> int:
     return 0 if all((
         payload['db_ok'], payload['model_loaded'], payload['analysis_is_mapping'],
         payload['journal_ready'], payload['encyclopedia_ready'], payload['settings_ready'],
-        payload['care_ready'],
+        payload['care_ready'], payload['seed_transfer_ready'],
     )) else 3
 
 
@@ -38,4 +40,4 @@ if __name__ == '__main__':
         raise SystemExit(_smoke())
     if '--full-window' in sys.argv:
         raise SystemExit(run_desktop())
-    raise SystemExit(run_pet_v8())
+    raise SystemExit(run_pet_v9())
