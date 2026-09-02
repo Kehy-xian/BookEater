@@ -4,10 +4,12 @@ from __future__ import annotations
 
 The store keeps the user's note and aggregate hidden monster state on the local machine.
 It deliberately does *not* persist raw classifier scores, keyword hits, rejected labels or
-other diagnostics that could later leak into ordinary UI.
+other diagnostics that could later leak into ordinary UI. The rolling recent signature stores
+only already-accepted growth nutrition so final evolution can reflect trajectory without keeping
+extra classifier diagnostics.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from pathlib import Path
 import sqlite3
@@ -31,6 +33,7 @@ class StateRow:
     species: str
     stats: dict[str, float]
     form_id: str = 'starter'
+    recent_stats: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -78,7 +81,8 @@ class SQLiteGameStore:
                     stage INTEGER NOT NULL DEFAULT 0,
                     species TEXT NOT NULL DEFAULT '글씨알',
                     stats_json TEXT NOT NULL DEFAULT '{}',
-                    form_id TEXT NOT NULL DEFAULT 'starter'
+                    form_id TEXT NOT NULL DEFAULT 'starter',
+                    recent_stats_json TEXT NOT NULL DEFAULT '{}'
                 );
 
                 CREATE TABLE IF NOT EXISTS reading_entries (
@@ -98,14 +102,17 @@ class SQLiteGameStore:
                 INSERT OR IGNORE INTO monster_state(singleton) VALUES(1);
                 """
             )
-            # Migration for existing playable databases: add the route-form pointer in place.
-            # Never rebuild/drop monster_state because that could destroy accumulated reading data.
+            # In-place migrations only. Never rebuild/drop monster_state: user growth must survive.
             columns = {
                 str(row['name']) for row in con.execute('PRAGMA table_info(monster_state)').fetchall()
             }
             if 'form_id' not in columns:
                 con.execute(
                     "ALTER TABLE monster_state ADD COLUMN form_id TEXT NOT NULL DEFAULT 'starter'"
+                )
+            if 'recent_stats_json' not in columns:
+                con.execute(
+                    "ALTER TABLE monster_state ADD COLUMN recent_stats_json TEXT NOT NULL DEFAULT '{}'"
                 )
             con.commit()
         finally:
@@ -141,7 +148,7 @@ class SQLiteGameStore:
         con = self._connect()
         try:
             row = con.execute(
-                'SELECT revision,entry_count,current_base,stage,species,stats_json,form_id '
+                'SELECT revision,entry_count,current_base,stage,species,stats_json,form_id,recent_stats_json '
                 'FROM monster_state WHERE singleton=1'
             ).fetchone()
             if row is None:
@@ -154,6 +161,7 @@ class SQLiteGameStore:
                 species=str(row['species']),
                 stats=self._safe_stats(row['stats_json']),
                 form_id=str(row['form_id'] or 'starter'),
+                recent_stats=self._safe_stats(row['recent_stats_json']),
             )
         finally:
             con.close()
@@ -226,7 +234,6 @@ class SQLiteGameStore:
             con.close()
 
     def mark_pending_error(self, feed_id: str, error_code: str) -> None:
-        # Technical details stay local and bounded. Ordinary UI never reads last_error.
         code = str(error_code or 'analysis_error')[:120]
         con = self._connect()
         try:
@@ -253,13 +260,9 @@ class SQLiteGameStore:
         model_version: str | None,
         nutrition_policy: str | None,
         form_id: str | None = None,
+        recent_stats: Mapping[str, float] | None = None,
     ) -> dict[str, Any]:
-        """Atomically consume one pending note and advance aggregate monster state.
-
-        If another writer won the race, RevisionConflict is raised before either the note or
-        state is changed. If this feed id was already consumed, its original public receipt is
-        returned so repeated clicks/retries are idempotent.
-        """
+        """Atomically consume one pending note and advance aggregate monster state."""
         con = self._connect()
         try:
             con.execute('BEGIN IMMEDIATE')
@@ -276,7 +279,7 @@ class SQLiteGameStore:
                 return payload
 
             state = con.execute(
-                'SELECT revision,form_id FROM monster_state WHERE singleton=1'
+                'SELECT revision,form_id,recent_stats_json FROM monster_state WHERE singleton=1'
             ).fetchone()
             if state is None:
                 con.rollback()
@@ -291,16 +294,25 @@ class SQLiteGameStore:
                     clean_stats[str(key)] = max(0.0, float(value))
                 except (TypeError, ValueError):
                     continue
+            clean_recent = {}
+            source_recent = recent_stats if recent_stats is not None else self._safe_stats(state['recent_stats_json'])
+            for key, value in source_recent.items():
+                try:
+                    clean_recent[str(key)] = max(0.0, float(value))
+                except (TypeError, ValueError):
+                    continue
+
             payload_json = json.dumps(dict(public_payload), ensure_ascii=False, separators=(',', ':'))
             stats_json = json.dumps(clean_stats, ensure_ascii=False, separators=(',', ':'))
+            recent_json = json.dumps(clean_recent, ensure_ascii=False, separators=(',', ':'))
             next_form = str(form_id or state['form_id'] or 'starter')
 
             con.execute(
-                'UPDATE monster_state SET revision=revision+1,entry_count=?,current_base=?,stage=?,species=?,stats_json=?,form_id=? '
+                'UPDATE monster_state SET revision=revision+1,entry_count=?,current_base=?,stage=?,species=?,stats_json=?,form_id=?,recent_stats_json=? '
                 'WHERE singleton=1',
                 (
                     max(0, int(entry_count)), current_base, max(0, int(stage)), str(species),
-                    stats_json, next_form,
+                    stats_json, next_form, recent_json,
                 ),
             )
             con.execute(
