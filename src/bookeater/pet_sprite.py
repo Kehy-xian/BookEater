@@ -6,6 +6,9 @@ Art is intentionally hot-swappable. Packaged production sprites are the stable d
 complete animation placed in the local ``art_overrides`` store may replace that state without
 changing reading, growth, persistence, or NLP code. Versioned overrides are activated atomically;
 legacy flat overrides remain readable for development compatibility.
+
+Unapproved descendants deliberately inherit the nearest approved ancestor's sprite. Once a final
+form receives its own approved asset slug, it automatically stops inheriting and uses that asset.
 """
 
 from pathlib import Path
@@ -14,6 +17,7 @@ from typing import Any
 from .art_override_store import override_source_root
 from .game.form_catalog import catalog_entry
 from .pet_art import GEULSSIAL_ANIMATIONS, complete_animation_available, expected_frame_paths
+from .pet_fallback_forms import approved_visual_form
 
 SPRITE_RELATIVE_DIR = Path('resources') / 'sprites'
 ART_OVERRIDE_DIRNAME = 'art_overrides'
@@ -33,7 +37,23 @@ def _runtime_override_root() -> Path:
 
 
 def asset_slug_for_form(form_id: str) -> str | None:
+    """Return only the form's own approved asset slug, never an inherited one."""
     return catalog_entry(form_id).asset_slug
+
+
+def sprite_source_form(form_id: str) -> str:
+    """Resolve which approved form is allowed to supply visuals for ``form_id``."""
+    try:
+        own = catalog_entry(form_id)
+    except ValueError:
+        return 'starter'
+    if own.asset_slug:
+        return str(form_id)
+    return approved_visual_form(form_id)
+
+
+def visual_asset_slug_for_form(form_id: str) -> str | None:
+    return asset_slug_for_form(sprite_source_form(form_id))
 
 
 def production_animation_available(
@@ -41,7 +61,7 @@ def production_animation_available(
     form_id: str,
     state: str,
 ) -> bool:
-    slug = asset_slug_for_form(form_id)
+    slug = visual_asset_slug_for_form(form_id)
     if not slug or state not in GEULSSIAL_ANIMATIONS:
         return False
     return complete_animation_available(sprite_root(resource_root), slug, state)
@@ -52,7 +72,7 @@ def production_frame_paths(
     form_id: str,
     state: str,
 ) -> tuple[Path, ...]:
-    slug = asset_slug_for_form(form_id)
+    slug = visual_asset_slug_for_form(form_id)
     if not slug or state not in GEULSSIAL_ANIMATIONS:
         return ()
     return expected_frame_paths(sprite_root(resource_root), slug, state)
@@ -69,7 +89,7 @@ def override_animation_available(
 ) -> bool:
     if override_root is None:
         return False
-    slug = asset_slug_for_form(form_id)
+    slug = visual_asset_slug_for_form(form_id)
     if not slug or state not in GEULSSIAL_ANIMATIONS:
         return False
     return complete_animation_available(_override_asset_root(override_root, slug), slug, state)
@@ -82,7 +102,7 @@ def override_frame_paths(
 ) -> tuple[Path, ...]:
     if override_root is None:
         return ()
-    slug = asset_slug_for_form(form_id)
+    slug = visual_asset_slug_for_form(form_id)
     if not slug or state not in GEULSSIAL_ANIMATIONS:
         return ()
     return expected_frame_paths(_override_asset_root(override_root, slug), slug, state)
