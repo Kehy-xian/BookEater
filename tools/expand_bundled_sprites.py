@@ -1,67 +1,93 @@
 from __future__ import annotations
 
+import base64
+from io import BytesIO
 from pathlib import Path
 import shutil
 import sys
 import tempfile
-import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 
 from bookeater.pet_art import GEULSSIAL_ANIMATIONS, frame_filename
-from bookeater.sprite_validation import validate_sprite_pack
+from bookeater.sprite_validation import SPRITE_HEIGHT, SPRITE_WIDTH, validate_sprite_pack
 
 ARCHIVE_DIR = ROOT / 'resources' / 'sprite_archives'
 SPRITE_DIR = ROOT / 'resources' / 'sprites'
-BUNDLED_PACKS = {
-    'paperling': ARCHIVE_DIR / 'paperling_core14.zip',
-}
 CORE_STATES = ('idle', 'eat', 'walk')
+ATLAS_COLUMNS = 7
+ATLAS_ROWS = 2
+
+# Approved starter atlas layout, row-major. The visual can be replaced later without changing code
+# as long as the same 7x2 cell contract is preserved.
+PAPERLING_ATLAS_ORDER = (
+    ('idle', 0), ('idle', 1), ('idle', 2), ('idle', 3),
+    ('eat', 0), ('eat', 1), ('eat', 2),
+    ('eat', 3), ('eat', 4), ('eat', 5),
+    ('walk', 0), ('walk', 1), ('walk', 2), ('walk', 3),
+)
 
 
-def expected_names(slug: str) -> set[str]:
-    return {
-        frame_filename(slug, state, i)
-        for state in CORE_STATES
-        for i in range(GEULSSIAL_ANIMATIONS[state].frame_count)
-    }
+def _atlas_parts(slug: str) -> tuple[Path, ...]:
+    return tuple(sorted(ARCHIVE_DIR.glob(f'{slug}_atlas.b85.part*')))
 
 
-def expand_one(slug: str, archive: Path) -> None:
-    if not archive.is_file():
-        # During source development the archive may intentionally be absent; vector fallback stays
-        # playable. Release/package CI separately asserts required starter art is present.
-        return
-    expected = expected_names(slug)
-    with zipfile.ZipFile(archive) as zf:
-        names = {info.filename for info in zf.infolist() if not info.is_dir()}
-        if names != expected:
-            missing = sorted(expected - names)
-            extra = sorted(names - expected)
-            raise RuntimeError(f'{archive.name}: unexpected contents missing={missing} extra={extra}')
-        if any(Path(name).name != name for name in names):
-            raise RuntimeError(f'{archive.name}: nested/traversal paths are not allowed')
+def _decode_atlas(parts: tuple[Path, ...]):
+    if not parts:
+        return None
+    # Pillow is build-only; it is not imported by the shipped desktop application.
+    from PIL import Image
 
-        with tempfile.TemporaryDirectory(prefix='bookeater-sprites-') as temp:
-            staging = Path(temp)
-            for name in sorted(names):
-                target = staging / name
-                with zf.open(name) as src, target.open('wb') as dst:
-                    shutil.copyfileobj(src, dst)
-            issues = validate_sprite_pack(staging, slug, required_states=CORE_STATES)
-            if issues:
-                detail = '; '.join(f'{x.code}:{x.path.name}' for x in issues[:8])
-                raise RuntimeError(f'{archive.name}: sprite validation failed: {detail}')
-            SPRITE_DIR.mkdir(parents=True, exist_ok=True)
-            for name in sorted(names):
+    encoded = ''.join(p.read_text(encoding='ascii').strip() for p in parts)
+    try:
+        raw = base64.b85decode(encoded.encode('ascii'))
+        image = Image.open(BytesIO(raw))
+        image.load()
+    except Exception as exc:
+        raise RuntimeError(f'cannot decode sprite atlas: {type(exc).__name__}') from exc
+    expected_size = (SPRITE_WIDTH * ATLAS_COLUMNS, SPRITE_HEIGHT * ATLAS_ROWS)
+    if image.size != expected_size:
+        raise RuntimeError(f'sprite atlas must be {expected_size[0]}x{expected_size[1]}, got {image.size}')
+    return image.convert('RGBA')
+
+
+def expand_paperling() -> bool:
+    parts = _atlas_parts('paperling')
+    atlas = _decode_atlas(parts)
+    if atlas is None:
+        return False
+
+    with tempfile.TemporaryDirectory(prefix='bookeater-sprites-') as temp:
+        staging = Path(temp)
+        for atlas_index, (state, frame_index) in enumerate(PAPERLING_ATLAS_ORDER):
+            col = atlas_index % ATLAS_COLUMNS
+            row = atlas_index // ATLAS_COLUMNS
+            box = (
+                col * SPRITE_WIDTH,
+                row * SPRITE_HEIGHT,
+                (col + 1) * SPRITE_WIDTH,
+                (row + 1) * SPRITE_HEIGHT,
+            )
+            frame = atlas.crop(box)
+            target = staging / frame_filename('paperling', state, frame_index)
+            frame.save(target, format='PNG', optimize=True)
+
+        issues = validate_sprite_pack(staging, 'paperling', required_states=CORE_STATES)
+        if issues:
+            detail = '; '.join(f'{x.code}:{x.path.name}' for x in issues[:8])
+            raise RuntimeError(f'paperling atlas expansion failed validation: {detail}')
+        SPRITE_DIR.mkdir(parents=True, exist_ok=True)
+        for state in CORE_STATES:
+            for i in range(GEULSSIAL_ANIMATIONS[state].frame_count):
+                name = frame_filename('paperling', state, i)
                 shutil.copy2(staging / name, SPRITE_DIR / name)
+    return True
 
 
 def main() -> int:
-    for slug, archive in BUNDLED_PACKS.items():
-        expand_one(slug, archive)
-    print('BUNDLED_SPRITES_EXPANDED')
+    expanded = expand_paperling()
+    print('BUNDLED_SPRITES_EXPANDED' if expanded else 'BUNDLED_SPRITES_NOT_PRESENT')
     return 0
 
 
