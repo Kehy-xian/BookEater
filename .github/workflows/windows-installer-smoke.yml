@@ -64,7 +64,7 @@ jobs:
           $hash = (Get-FileHash 'dist\installer\BookEater-Setup.exe' -Algorithm SHA256).Hash.ToLower()
           if ($manifest.sha256 -ne $hash) { throw 'manifest SHA256 does not match installer bytes' }
           if ($manifest.installer_url -notmatch '^https://') { throw 'manifest installer URL is not HTTPS' }
-      - name: Install, simulate version upgrade, uninstall, preserve user data
+      - name: Install, upgrade in place, uninstall, preserve user data
         shell: pwsh
         run: |
           $setup = (Resolve-Path 'dist\installer\BookEater-Setup.exe').Path
@@ -86,6 +86,13 @@ jobs:
           if (-not (Test-Path $db)) { throw 'installed app did not create persistent database' }
           $versionMarker = Join-Path $dataDir 'last_successful_app_version.txt'
           if (-not (Test-Path $versionMarker)) { throw 'installed app did not create app-version marker' }
+          $expectedVersion = python -c "import sys; sys.path.insert(0, 'src'); from bookeater.version import APP_VERSION; print(APP_VERSION)"
+          if ((Get-Content $versionMarker -Raw).Trim() -ne $expectedVersion) { throw 'fresh install wrote unexpected app-version marker' }
+          $upgradeDir = Join-Path $dataDir 'backups\version-upgrades'
+          if (Test-Path $upgradeDir) {
+            $freshBackups = @(Get-ChildItem $upgradeDir -Filter '*.sqlite3' -File -ErrorAction SilentlyContinue)
+            if ($freshBackups.Count -ne 0) { throw 'fresh install unexpectedly created a version-upgrade backup' }
+          }
 
           # Put a known value inside the live DB, then simulate launching a newer app version by
           # making the sidecar marker older. The next packaged launch must take a SQLite backup
@@ -100,25 +107,52 @@ jobs:
           '@ | python -
           '0.0.1-old' | Set-Content -Encoding ascii $versionMarker
 
+          # Exercise the installer upgrade path itself, not only the app's version marker logic.
+          # The installer may replace application files, but it must not open, migrate, or alter
+          # the user database or advance the app-version marker before the upgraded app starts.
+          $dbHashBeforeInstallerUpgrade = (Get-FileHash $db -Algorithm SHA256).Hash
+          $upgradeInstall = Start-Process -FilePath $setup -ArgumentList @(
+            '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/DIR=$installDir"
+          ) -Wait -PassThru
+          if ($upgradeInstall.ExitCode -ne 0) { throw "in-place installer upgrade exit=$($upgradeInstall.ExitCode)" }
+          if (-not (Test-Path $exe)) { throw 'in-place installer upgrade removed BookEater.exe' }
+          if ((Get-FileHash $db -Algorithm SHA256).Hash -ne $dbHashBeforeInstallerUpgrade) { throw 'installer upgrade modified the user database before app launch' }
+          if ((Get-Content $versionMarker -Raw).Trim() -ne '0.0.1-old') { throw 'installer upgrade advanced the app-version marker before app launch' }
+          if (Test-Path $upgradeDir) {
+            $preLaunchBackups = @(Get-ChildItem $upgradeDir -Filter '*.sqlite3' -File -ErrorAction SilentlyContinue)
+            if ($preLaunchBackups.Count -ne 0) { throw 'installer created a version-upgrade backup instead of leaving migration safety to app startup' }
+          }
+
           $upgradeSmoke = Start-Process -FilePath $exe -ArgumentList '--smoke' -Wait -PassThru
           if ($upgradeSmoke.ExitCode -ne 0) { throw "version-transition smoke exit=$($upgradeSmoke.ExitCode)" }
+          if ((Get-Content $versionMarker -Raw).Trim() -ne $expectedVersion) { throw 'upgraded app did not advance the app-version marker after successful startup' }
 
-          $upgradeDir = Join-Path $dataDir 'backups\version-upgrades'
-          $upgradeBackup = Get-ChildItem $upgradeDir -Filter '*.sqlite3' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1
-          if (-not $upgradeBackup) { throw 'version transition did not create a pre-migration SQLite backup' }
+          $upgradeBackups = @(Get-ChildItem $upgradeDir -Filter '*.sqlite3' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime)
+          if ($upgradeBackups.Count -ne 1) { throw "version transition created $($upgradeBackups.Count) backups; expected exactly one" }
+          $upgradeBackup = $upgradeBackups[-1]
           $env:BOOKEATER_TEST_BACKUP = $upgradeBackup.FullName
           @'
           import os, sqlite3
-          path = os.environ['BOOKEATER_TEST_BACKUP']
-          con = sqlite3.connect(path)
-          check = con.execute('PRAGMA quick_check').fetchone()[0]
-          value = con.execute("SELECT value FROM app_settings WHERE key='upgrade_guard_probe'").fetchone()
-          con.close()
-          if str(check).lower() != 'ok':
-              raise SystemExit('backup quick_check failed')
-          if value != ('must-survive-backup',):
-              raise SystemExit('pre-version backup lost probe data')
+          for label, path in (
+              ('live database', os.environ['BOOKEATER_TEST_DB']),
+              ('pre-version backup', os.environ['BOOKEATER_TEST_BACKUP']),
+          ):
+              con = sqlite3.connect(path)
+              check = con.execute('PRAGMA quick_check').fetchone()[0]
+              value = con.execute("SELECT value FROM app_settings WHERE key='upgrade_guard_probe'").fetchone()
+              con.close()
+              if str(check).lower() != 'ok':
+                  raise SystemExit(f'{label} quick_check failed')
+              if value != ('must-survive-backup',):
+                  raise SystemExit(f'{label} lost probe data')
           '@ | python -
+
+          # A successful same-version restart must be idempotent and must not create another
+          # automatic backup once the version marker has advanced.
+          $sameVersionSmoke = Start-Process -FilePath $exe -ArgumentList '--smoke' -Wait -PassThru
+          if ($sameVersionSmoke.ExitCode -ne 0) { throw "same-version smoke exit=$($sameVersionSmoke.ExitCode)" }
+          $sameVersionBackups = @(Get-ChildItem $upgradeDir -Filter '*.sqlite3' -File -ErrorAction SilentlyContinue)
+          if ($sameVersionBackups.Count -ne 1) { throw 'same-version restart created a redundant version-upgrade backup' }
 
           $marker = Join-Path $dataDir 'installer-preserve-test.txt'
           'must-survive-uninstall' | Set-Content -Encoding utf8 $marker
@@ -133,7 +167,7 @@ jobs:
           if (-not (Test-Path $db)) { throw 'uninstall deleted user database' }
           if (-not (Test-Path $marker)) { throw 'uninstall deleted user data directory' }
           if (-not (Test-Path $upgradeBackup.FullName)) { throw 'uninstall deleted version-upgrade backup' }
-          Write-Host 'INSTALLER_VERSION_BACKUP_AND_USER_DATA_PRESERVATION_OK'
+          Write-Host 'INSTALLER_IN_PLACE_VERSION_UPGRADE_AND_USER_DATA_PRESERVATION_OK'
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
