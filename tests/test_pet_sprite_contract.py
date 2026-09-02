@@ -6,10 +6,22 @@ sys.path.insert(0, str(ROOT / 'src'))
 
 from bookeater.pet_art import GEULSSIAL_ANIMATIONS, frame_filename
 from bookeater.pet_sprite import (
+    TkSpriteCache,
     asset_slug_for_form,
+    default_override_root,
     production_animation_available,
     production_frame_paths,
+    resolved_frame_paths,
 )
+
+
+def _write_complete(root: Path, slug: str, state: str, payload: bytes = b'placeholder') -> tuple[Path, ...]:
+    root.mkdir(parents=True, exist_ok=True)
+    spec = GEULSSIAL_ANIMATIONS[state]
+    paths = tuple(root / frame_filename(slug, state, i) for i in range(spec.frame_count))
+    for path in paths:
+        path.write_bytes(payload)
+    return paths
 
 
 def test_approved_forms_have_stable_asset_slugs():
@@ -43,3 +55,65 @@ def test_complete_filename_set_is_discovered(tmp_path):
         path.write_bytes(b'placeholder')
     # Availability checks completeness only; TkSpriteCache separately rejects corrupt PNG bytes.
     assert production_animation_available(root, 'route_c', 'walk')
+
+
+def test_complete_override_wins_over_packaged_animation(tmp_path):
+    resource_root = tmp_path / 'bundle'
+    packaged = resource_root / 'resources' / 'sprites'
+    override = tmp_path / 'user-art'
+    packaged_paths = _write_complete(packaged, 'paperling', 'idle', b'packaged')
+    override_paths = _write_complete(override, 'paperling', 'idle', b'override')
+
+    resolved = resolved_frame_paths(
+        resource_root,
+        'starter',
+        'idle',
+        override_root=override,
+    )
+    assert resolved == override_paths
+    assert resolved != packaged_paths
+
+
+def test_partial_override_is_atomic_and_never_mixes_with_packaged_frames(tmp_path):
+    resource_root = tmp_path / 'bundle'
+    packaged = resource_root / 'resources' / 'sprites'
+    override = tmp_path / 'user-art'
+    packaged_paths = _write_complete(packaged, 'paperling', 'walk', b'packaged')
+    override.mkdir(parents=True)
+    # Copy only one override frame; the entire override state must be ignored.
+    (override / frame_filename('paperling', 'walk', 0)).write_bytes(b'override')
+
+    resolved = resolved_frame_paths(
+        resource_root,
+        'starter',
+        'walk',
+        override_root=override,
+    )
+    assert resolved == packaged_paths
+    assert all(path.parent == packaged for path in resolved)
+
+
+def test_default_override_root_is_inside_user_data_not_packaged_resources(tmp_path):
+    data = tmp_path / 'data'
+    resource = tmp_path / 'bundle'
+    override = default_override_root(data)
+    assert override == data / 'art_overrides'
+    assert resource not in override.parents
+
+
+def test_tk_cache_auto_discovers_bookeater_data_dir_override(tmp_path, monkeypatch):
+    data = tmp_path / 'user-data'
+    resource_root = tmp_path / 'bundle'
+    override = default_override_root(data)
+    expected = _write_complete(override, 'paperling', 'idle', b'fake-png')
+    monkeypatch.setenv('BOOKEATER_DATA_DIR', str(data))
+
+    class FakeTk:
+        @staticmethod
+        def PhotoImage(*, file):
+            return Path(file)
+
+    cache = TkSpriteCache(FakeTk, resource_root)
+    frames = cache.frames('starter', 'idle')
+    assert frames == expected
+    assert cache.override_root == override
