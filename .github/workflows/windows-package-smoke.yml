@@ -1,3 +1,4 @@
+# Final Windows package validation after full core regression.
 name: windows-package-smoke
 on:
   workflow_dispatch:
@@ -108,7 +109,6 @@ jobs:
       - name: Packaged Windows mutex smoke
         shell: pwsh
         run: |
-          # Exercise the named-mutex path from the actual packaged executable, not only unit tests.
           $proc = Start-Process -FilePath 'dist/BookEater/BookEater.exe' -ArgumentList '--mutex-smoke' -Wait -PassThru
           if ($proc.ExitCode -ne 0) { throw "mutex smoke exit=$($proc.ExitCode)" }
           Write-Host 'PACKAGED_WINDOWS_MUTEX_SMOKE_OK'
