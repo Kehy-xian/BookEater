@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import queue
 import threading
-import webbrowser
 
 from .pet_behavior import PetMotion
 from .pet_window_v5 import DesktopPetWindowV5
 from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime, resource_root
 from .services.update_check import configured_update_checker
+from .services.update_install import (
+    VerifiedInstaller,
+    download_verified_installer,
+    launch_verified_installer,
+)
 from .services.windows_autostart import can_enable_autostart, is_autostart_enabled, set_autostart
 from .version import APP_VERSION
 
@@ -132,14 +136,8 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
         update_row = ttk.Frame(body)
         update_row.pack(fill='x')
         ttk.Label(update_row, text=f'현재 버전 {APP_VERSION}').pack(side='left')
-        update_url = {'value': None}
-
-        def open_update_page() -> None:
-            url = update_url['value']
-            if url:
-                webbrowser.open(url)
-
-        download_button = ttk.Button(update_row, text='다운로드 페이지', command=open_update_page, state='disabled')
+        update_manifest = {'value': None}
+        download_button = ttk.Button(update_row, text='업데이트 받기', state='disabled')
         download_button.pack(side='right')
 
         update_button = ttk.Button(body, text='업데이트 확인')
@@ -161,16 +159,42 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
                 msg.set('업데이트 서버가 아직 연결되지 않았어요. 현재 버전을 계속 사용할 수 있습니다.')
                 return
             if result.update_available:
-                update_url['value'] = result.manifest.installer_url
+                update_manifest['value'] = result.manifest
                 download_button.configure(state='normal')
                 text = f'새 버전 {result.manifest.latest_version}이 있어요.'
                 if result.manifest.notes:
                     text += ' ' + result.manifest.notes[:180]
                 msg.set(text)
             else:
-                update_url['value'] = None
+                update_manifest['value'] = None
                 download_button.configure(state='disabled')
                 msg.set('현재 버전이 최신입니다.')
+
+        def finish_download(installer: VerifiedInstaller | None, *, error: bool = False) -> None:
+            update_button.configure(state='normal')
+            download_button.configure(state='normal' if update_manifest['value'] is not None else 'disabled')
+            if error or installer is None:
+                msg.set('설치파일을 안전하게 받지 못했어요. 기존 앱과 데이터는 변경하지 않았습니다.')
+                return
+            msg.set(f'새 버전 {installer.version} 설치파일의 SHA-256 검증을 마쳤어요.')
+            from tkinter import messagebox
+            install_now = messagebox.askyesno(
+                '업데이트 설치 준비 완료',
+                f'새 버전 {installer.version} 설치파일을 안전하게 확인했어요.\n\n'
+                '지금 설치를 시작하고 책먹는 몬스터를 종료할까요?\n'
+                '독서기록과 설정은 설치 폴더 밖에 그대로 보존됩니다.',
+                parent=win,
+            )
+            if not install_now:
+                msg.set('설치파일은 이 PC의 업데이트 폴더에 보관했어요. 나중에 다시 업데이트를 확인할 수 있습니다.')
+                return
+            try:
+                launch_verified_installer(installer)
+            except Exception:
+                msg.set('설치 프로그램을 시작하지 못했어요. 기존 앱과 데이터는 그대로입니다.')
+                return
+            msg.set('설치 프로그램을 시작했어요. 안전한 교체를 위해 앱을 종료합니다.')
+            self.root.after(250, self.root.destroy)
 
         def poll_update_results() -> None:
             try:
@@ -186,15 +210,19 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
                 win.after(100, poll_update_results)
                 return
             update_polling['active'] = False
-            if kind == 'ok':
+            if kind == 'check_ok':
                 finish_update_check(payload)
+            elif kind == 'download_ok':
+                finish_download(payload if isinstance(payload, VerifiedInstaller) else None)
+            elif kind == 'download_error':
+                finish_download(None, error=True)
             else:
                 finish_update_check(error='업데이트 정보를 확인하지 못했어요. 기존 앱은 그대로 사용할 수 있습니다.')
 
         def check_update() -> None:
             update_button.configure(state='disabled')
             download_button.configure(state='disabled')
-            update_url['value'] = None
+            update_manifest['value'] = None
             msg.set('업데이트 정보를 확인하는 중…')
             checker = configured_update_checker(resource_root=resource_root())
             if checker is None:
@@ -203,19 +231,52 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
 
             def work() -> None:
                 try:
-                    update_results.put(('ok', checker.check(current_version=APP_VERSION)))
+                    update_results.put(('check_ok', checker.check(current_version=APP_VERSION)))
                 except Exception:
-                    update_results.put(('error', None))
+                    update_results.put(('check_error', None))
 
             threading.Thread(target=work, name='bookeater-update-check', daemon=True).start()
             if not update_polling['active']:
                 update_polling['active'] = True
                 win.after(100, poll_update_results)
 
+        def download_update() -> None:
+            manifest = update_manifest['value']
+            if manifest is None:
+                return
+            from tkinter import messagebox
+            confirmed = messagebox.askyesno(
+                '업데이트 다운로드',
+                f'새 버전 {manifest.latest_version} 설치파일을 받을까요?\n\n'
+                '다운로드가 끝나면 SHA-256을 확인한 뒤 설치 여부를 다시 묻습니다.',
+                parent=win,
+            )
+            if not confirmed:
+                return
+            update_button.configure(state='disabled')
+            download_button.configure(state='disabled')
+            msg.set('설치파일을 받는 중… 완료되면 안전성 검사를 진행합니다.')
+
+            def work() -> None:
+                try:
+                    verified = download_verified_installer(
+                        manifest,
+                        updates_dir=self.runtime.data_dir / 'updates',
+                    )
+                    update_results.put(('download_ok', verified))
+                except Exception:
+                    update_results.put(('download_error', None))
+
+            threading.Thread(target=work, name='bookeater-update-download', daemon=True).start()
+            if not update_polling['active']:
+                update_polling['active'] = True
+                win.after(100, poll_update_results)
+
         update_button.configure(command=check_update)
+        download_button.configure(command=download_update)
         ttk.Label(
             body,
-            text='업데이트 확인은 버튼을 눌렀을 때만 실행되며, 앱이 스스로 설치파일을 덮어쓰지는 않습니다.',
+            text='확인·다운로드·설치는 각각 사용자가 선택해야 진행됩니다. 설치 전 파일 해시를 다시 확인합니다.',
             wraplength=380,
         ).pack(anchor='w', pady=(5, 0))
 

@@ -21,7 +21,10 @@ def _dark_ratio(image: Image.Image, box=(76, 76, 115, 119)) -> float:
     mostly ivory paper while B/C should be mostly dark core.
     """
     region = image.crop(box).convert('RGBA')
-    visible = [px for px in region.getdata() if px[3] > 0]
+    # Pillow 12 deprecates getdata(), while the supported 10.x line does not yet expose the new
+    # spelling. Keep the regression warning-free without dropping compatibility with either line.
+    pixels = region.get_flattened_data() if hasattr(region, 'get_flattened_data') else region.getdata()
+    visible = [px for px in pixels if px[3] > 0]
     assert visible
     dark = [px for px in visible if sum(px[:3]) / 3 < 120]
     return len(dark) / len(visible)

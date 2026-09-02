@@ -10,6 +10,7 @@ from bookeater.runtime import bootstrap_runtime
 from bookeater.services.catalog import CatalogClient, configured_catalog_client
 from bookeater.services.data_transfer import SEED_FORMAT, SEED_VERSION
 from bookeater.services.single_instance import windows_mutex_self_test
+from bookeater.services.update_install import download_verified_installer, launch_verified_installer
 
 
 def _smoke() -> int:
@@ -33,6 +34,7 @@ def _smoke() -> int:
         # may bundle a public HTTPS endpoint. The secret upstream key never belongs in this binary.
         'catalog_module_ready': catalog is None or isinstance(catalog, CatalogClient),
         'catalog_configured': catalog is not None,
+        'verified_update_ready': callable(download_verified_installer) and callable(launch_verified_installer),
         'form_id': state.form_id,
         'species': view.species,
     }
@@ -42,6 +44,7 @@ def _smoke() -> int:
         payload['journal_ready'], payload['encyclopedia_ready'], payload['settings_ready'],
         payload['care_ready'], payload['drafts_ready'], payload['seed_transfer_ready'],
         payload['catalog_module_ready'],
+        payload['verified_update_ready'],
     )) else 3
 
 

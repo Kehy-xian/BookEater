@@ -1,0 +1,106 @@
+# BookEater implementation status — 2026-09-02
+
+This file is the current repository-backed status. `PRODUCT_ROADMAP_V1.md` records the earlier
+product direction and is no longer a reliable checklist by itself.
+
+## Product constraints that remain binding
+
+- Local/offline reading archive and growth state by default.
+- One book may own any number of chronological reading records; continuation never overwrites an
+  earlier record.
+- Submitted text is saved before analysis. Unsubmitted text autosaves locally and is recoverable.
+- RESPONSE and WORLD are independent nullable multi-label layers. `사회` is a WORLD label; no
+  forced 4×5 matrix and no generic `기타` trait.
+- Player UI does not reveal classifier scores, exact thresholds, keywords or evolution recipes.
+- Recommendations may use only real catalog candidates. Reading text and local growth history do
+  not go to the catalog service.
+- Improvement sharing is separate, explicit, off by default and minimal. No desktop upload is
+  implemented yet.
+- Installer/update/uninstall operations may replace program files but never silently overwrite
+  books, records, settings, corrections, backups, encyclopedia history or growth history.
+
+## Implemented and regression-covered
+
+### Reading, storage and safety
+
+- Local SQLite runtime, one-book-to-many-record journal and recent-book ordering.
+- Save-first feed submission, pending analysis retry and atomic growth commit.
+- 1.2-second throttled local draft autosave, recovery and submit-time clearing.
+- Portable `.bookeater-seed` export, validated planting, pre-operation backup and explicit reset.
+- App-version transition backup before store/schema initialization; automatic retention of the
+  newest five version backups.
+- In-place installer upgrade/uninstall E2E preserving the live DB, backup and user data directory.
+- Profile-scoped Windows named mutex for every interactive launch path.
+
+### Analysis and growth
+
+- Bundled multilingual E5 ONNX model with lexical/hybrid safeguards.
+- Nullable RESPONSE/WORLD analysis, including WORLD `사회`, auxiliary uncovered-domain tags and
+  conservative abstention.
+- Hidden nutrition projection, recent-trajectory state, permanent lineage and delayed evolution
+  when evidence is weak.
+- Starter plus approved A/B/C and A1/A2/B1/B2/C1/C2 production sprite contracts; unapproved final
+  forms inherit the nearest approved ancestor rather than exposing invented art.
+
+### Player experience
+
+- Transparent always-on-top draggable Windows pet with bounded autonomous roaming.
+- Sprite IDLE/EAT/WALK/READ/SLEEP/TALK/SPIT_MEMORY states and lineage-safe vector fallback.
+- Feed panel, practical bookshelf/timeline, current-monster profile and lineage-tree encyclopedia.
+- Local memory resurfacing and broad personality dialogue.
+- First-run drop animation with replay setting; per-user Windows auto-start, default OFF.
+- Care state, snack/play/wash actions and one minimal letter-catching mini-game.
+- Real-catalog recommendation client and local taste/expansion ranking; wishlist save.
+- Explicit update check plus verified installer download, SHA-256 validation, second install
+  confirmation and shell-free Windows launch.
+
+### Build and operations
+
+- Full test discovery in core CI rather than a manually maintained test-file list.
+- Windows package smoke with bundled model/resources and packaged `--mutex-smoke`.
+- Windows installer compile, manifest hash contract and in-place upgrade E2E.
+- Tag-gated GitHub Release workflow that publishes `BookEater-Setup.exe` and
+  `release-manifest.json`; no release is published without an explicit matching version tag.
+- Stateless Kakao catalog proxy and Cloudflare opt-in feedback backend foundations.
+
+## Implemented foundations but not production-connected
+
+- Catalog proxy code exists, but `resources/catalog_endpoint.txt` has no deployed public endpoint.
+- Feedback backend schema/API exists, but the desktop has no consent, correction/odd-result or
+  deletion-request UI and therefore sends nothing.
+- Release/update workflow exists, but a stable version tag and first GitHub Release have not been
+  created yet.
+- Update downloads are hash-verified, but the installer is not Authenticode-signed; Windows may
+  show SmartScreen warnings.
+
+## Not implemented
+
+- Approved names and original production art for the 12 reserved final forms.
+- Archiving a fully grown monster to a permanent shelf and raising another starter.
+- Deterministic quiz mode based on the user's own notes.
+- Full opt-in improvement-data lifecycle: clear consent text/version, local correction storage,
+  redaction preview, upload queue/retry and deletion request.
+- A deployed public catalog endpoint and production secret configuration.
+- Authenticode signing and signed-manifest verification beyond HTTPS plus exact SHA-256.
+- Multi-monitor-specific work-area handling; current roaming uses the primary Windows work area.
+
+## Highest-priority refinement/bug risks
+
+1. Production update channel must be exercised with a prerelease tag before public distribution.
+2. Duplicate visible book labels can make the feed combobox ambiguous because UI selection is
+   keyed by display text; selection should eventually carry the stable book ID directly.
+3. Settings/recommendation/download flows need real Windows usability testing for slow network,
+   panel-close and SmartScreen behavior beyond headless CI.
+4. Catalog and feedback endpoints need rate-limit, abuse and retention-policy review before public
+   deployment.
+5. The Pillow `Image.getdata()` test helper warning should be updated before Pillow 14.
+
+## Next order
+
+1. Run all core tests and Windows package/installer regression for the verified updater changes.
+2. Create a non-public-facing prerelease version/tag only after confirming version text and release
+   notes; verify latest-manifest download and updater launch end to end.
+3. Deploy the catalog proxy on a free tier and bind the real endpoint without exposing the Kakao
+   key.
+4. Add explicit local correction/odd-result UX before enabling any improvement-data upload.
+5. Resolve duplicate-label book selection and complete multi-monitor/manual Windows playtests.

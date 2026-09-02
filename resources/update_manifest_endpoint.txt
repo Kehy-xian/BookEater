@@ -1,2 +1,3 @@
-# Production update manifest URL goes on the first non-comment line.
-# Example: https://updates.example.com/bookeater/latest.json
+# GitHub Releases is the free public update channel. The desktop reads this file only after the
+# player presses the update-check button.
+https://github.com/Kehy-xian/BookEater/releases/latest/download/release-manifest.json

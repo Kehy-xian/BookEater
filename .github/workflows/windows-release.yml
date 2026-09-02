@@ -1,0 +1,108 @@
+name: windows-release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: 'utf-8'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Verify release tag matches application version
+        shell: pwsh
+        run: |
+          $version = python -c "import sys; sys.path.insert(0, 'src'); from bookeater.version import APP_VERSION; print(APP_VERSION)"
+          $expected = "v$version"
+          if ($env:GITHUB_REF_NAME -ne $expected) {
+            throw "release tag $env:GITHUB_REF_NAME does not match application version $expected"
+          }
+      - name: Install build dependencies
+        run: python -m pip install -r requirements-build.txt
+      - name: Expand and validate production sprites
+        shell: pwsh
+        run: |
+          python tools/expand_bundled_sprites.py
+          $slugs = @('paperling','pagedge','inknest','lantern','route_a1','route_a2','route_b1','route_b2','route_c1','route_c2')
+          foreach ($slug in $slugs) {
+            python tools/validate_sprite_pack.py resources/sprites $slug --states idle,eat,walk,read,sleep,talk,spit_memory
+            if ($LASTEXITCODE -ne 0) { throw "sprite validation failed: $slug" }
+          }
+      - name: Fetch bundled local model
+        run: python tools/fetch_e5_model.py
+      - name: Build Windows desktop folder
+        run: pyinstaller --noconfirm --clean BookEater.spec
+      - name: Run packaged smoke checks
+        shell: pwsh
+        run: |
+          $env:BOOKEATER_DATA_DIR = Join-Path $env:RUNNER_TEMP 'bookeater-release-smoke-data'
+          $smoke = Start-Process -FilePath 'dist\BookEater\BookEater.exe' -ArgumentList '--smoke' -Wait -PassThru
+          if ($smoke.ExitCode -ne 0) { throw "packaged smoke exit=$($smoke.ExitCode)" }
+          $mutex = Start-Process -FilePath 'dist\BookEater\BookEater.exe' -ArgumentList '--mutex-smoke' -Wait -PassThru
+          if ($mutex.ExitCode -ne 0) { throw "mutex smoke exit=$($mutex.ExitCode)" }
+      - name: Install Inno Setup compiler
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+      - name: Compile installer
+        shell: pwsh
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { throw 'ISCC.exe missing after Inno Setup install' }
+          & $iscc 'installer\BookEater.iss'
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compile exit=$LASTEXITCODE" }
+      - name: Build release manifest
+        shell: pwsh
+        run: |
+          $version = python -c "import sys; sys.path.insert(0, 'src'); from bookeater.version import APP_VERSION; print(APP_VERSION)"
+          $assetUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:GITHUB_REF_NAME/BookEater-Setup.exe"
+          python tools/build_update_manifest.py `
+            --installer 'dist\installer\BookEater-Setup.exe' `
+            --url $assetUrl `
+            --output 'dist\installer\release-manifest.json' `
+            --notes "책먹는 몬스터 $version"
+          $manifest = Get-Content 'dist\installer\release-manifest.json' -Raw | ConvertFrom-Json
+          $actual = (Get-FileHash 'dist\installer\BookEater-Setup.exe' -Algorithm SHA256).Hash.ToLower()
+          if ($manifest.latest_version -ne $version) { throw 'release manifest version mismatch' }
+          if ($manifest.sha256 -ne $actual) { throw 'release manifest installer hash mismatch' }
+      - name: Publish or refresh GitHub Release assets
+        shell: pwsh
+        run: |
+          $prerelease = $env:GITHUB_REF_NAME -match '-'
+          gh release view $env:GITHUB_REF_NAME *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:GITHUB_REF_NAME `
+              'dist\installer\BookEater-Setup.exe' `
+              'dist\installer\release-manifest.json' `
+              --clobber
+          } else {
+            $releaseArgs = @(
+              'release','create',$env:GITHUB_REF_NAME,
+              'dist\installer\BookEater-Setup.exe',
+              'dist\installer\release-manifest.json',
+              '--title',"책먹는 몬스터 $env:GITHUB_REF_NAME",
+              '--generate-notes'
+            )
+            if ($prerelease) { $releaseArgs += '--prerelease' }
+            & gh @releaseArgs
+          }
+          if ($LASTEXITCODE -ne 0) { throw "GitHub Release publish exit=$LASTEXITCODE" }
+      - name: Upload release verification artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BookEater-release-${{ github.ref_name }}
+          path: |
+            dist/installer/BookEater-Setup.exe
+            dist/installer/release-manifest.json
+          if-no-files-found: error
+          compression-level: 9
+          retention-days: 14

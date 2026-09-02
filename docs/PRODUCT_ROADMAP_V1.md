@@ -1,5 +1,8 @@
 # BookEater Product Roadmap v1
 
+> Historical planning document. For the repository's current implemented/missing status, use
+> `IMPLEMENTATION_STATUS_2026-09-02.md`; many items originally listed below as "next" are now built.
+
 ## Product principle
 
 BookEater is a local-first desktop pet that grows from reading records. Internal NLP traits, keywords, confidence scores, thresholds and exact evolution recipes remain hidden from players. The player sees only phenotype, mood, dialogue, memories and broad tendency hints.
