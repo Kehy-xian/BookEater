@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / 'src'))
 
 from bookeater.pet_art import GEULSSIAL_ANIMATIONS, frame_filename
 from bookeater.sprite_validation import SPRITE_HEIGHT, SPRITE_WIDTH, validate_sprite_pack
+from generate_paperling_sprites import generate_paperling_core_frames
 
 ARCHIVE_DIR = ROOT / 'resources' / 'sprite_archives'
 SPRITE_DIR = ROOT / 'resources' / 'sprites'
@@ -30,7 +31,20 @@ PAPERLING_ATLAS_ORDER = (
 
 
 def _atlas_parts(slug: str) -> tuple[Path, ...]:
-    return tuple(sorted(ARCHIVE_DIR.glob(f'{slug}_atlas.b85.part*')))
+    parts = tuple(sorted(ARCHIVE_DIR.glob(f'{slug}_atlas.b85.part*')))
+    if not parts:
+        return ()
+    # A partially committed atlas must never break a playable build. Only a contiguous set of
+    # part00..partNN is considered installable; otherwise the replaceable baseline is generated.
+    indices: list[int] = []
+    for part in parts:
+        suffix = part.name.rsplit('part', 1)[-1]
+        if not suffix.isdigit():
+            return ()
+        indices.append(int(suffix))
+    if indices != list(range(len(parts))):
+        return ()
+    return parts
 
 
 def _decode_atlas(parts: tuple[Path, ...]):
@@ -52,11 +66,23 @@ def _decode_atlas(parts: tuple[Path, ...]):
     return image.convert('RGBA')
 
 
-def expand_paperling() -> bool:
+def _validate_paperling(target: Path) -> None:
+    issues = validate_sprite_pack(target, 'paperling', required_states=CORE_STATES)
+    if issues:
+        detail = '; '.join(f'{x.code}:{x.path.name}' for x in issues[:8])
+        raise RuntimeError(f'paperling sprite validation failed: {detail}')
+
+
+def expand_paperling() -> str:
     parts = _atlas_parts('paperling')
     atlas = _decode_atlas(parts)
+
     if atlas is None:
-        return False
+        # Safe replaceable baseline that preserves the approved starter identity. A complete later
+        # atlas automatically takes precedence without any runtime/gameplay change.
+        generate_paperling_core_frames(SPRITE_DIR)
+        _validate_paperling(SPRITE_DIR)
+        return 'baseline'
 
     with tempfile.TemporaryDirectory(prefix='bookeater-sprites-') as temp:
         staging = Path(temp)
@@ -73,21 +99,18 @@ def expand_paperling() -> bool:
             target = staging / frame_filename('paperling', state, frame_index)
             frame.save(target, format='PNG', optimize=True)
 
-        issues = validate_sprite_pack(staging, 'paperling', required_states=CORE_STATES)
-        if issues:
-            detail = '; '.join(f'{x.code}:{x.path.name}' for x in issues[:8])
-            raise RuntimeError(f'paperling atlas expansion failed validation: {detail}')
+        _validate_paperling(staging)
         SPRITE_DIR.mkdir(parents=True, exist_ok=True)
         for state in CORE_STATES:
             for i in range(GEULSSIAL_ANIMATIONS[state].frame_count):
                 name = frame_filename('paperling', state, i)
                 shutil.copy2(staging / name, SPRITE_DIR / name)
-    return True
+    return 'atlas'
 
 
 def main() -> int:
-    expanded = expand_paperling()
-    print('BUNDLED_SPRITES_EXPANDED' if expanded else 'BUNDLED_SPRITES_NOT_PRESENT')
+    source = expand_paperling()
+    print(f'BUNDLED_SPRITES_EXPANDED source={source}')
     return 0
 
 
