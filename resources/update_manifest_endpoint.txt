@@ -1,0 +1,2 @@
+# Production update manifest URL goes on the first non-comment line.
+# Example: https://updates.example.com/bookeater/latest.json
