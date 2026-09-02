@@ -93,6 +93,27 @@ def test_partial_override_is_atomic_and_never_mixes_with_packaged_frames(tmp_pat
     assert all(path.parent == packaged for path in resolved)
 
 
+def test_corrupt_complete_override_falls_back_to_healthy_packaged_animation(tmp_path):
+    resource_root = tmp_path / 'bundle'
+    packaged = resource_root / 'resources' / 'sprites'
+    override = tmp_path / 'user-art'
+    packaged_paths = _write_complete(packaged, 'paperling', 'idle', b'good')
+    override_paths = _write_complete(override, 'paperling', 'idle', b'bad')
+
+    class FakeTk:
+        @staticmethod
+        def PhotoImage(*, file):
+            path = Path(file)
+            if path.parent == override:
+                raise ValueError('corrupt override PNG')
+            return path
+
+    cache = TkSpriteCache(FakeTk, resource_root, override_root=override)
+    frames = cache.frames('starter', 'idle')
+    assert frames == packaged_paths
+    assert all(path not in override_paths for path in frames)
+
+
 def test_default_override_root_is_inside_user_data_not_packaged_resources(tmp_path):
     data = tmp_path / 'data'
     resource = tmp_path / 'bundle'
