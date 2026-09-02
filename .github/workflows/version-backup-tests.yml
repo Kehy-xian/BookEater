@@ -1,0 +1,21 @@
+name: version-backup-tests
+on:
+  workflow_dispatch:
+  push:
+    branches: [sprint-04-play-loop]
+    paths:
+      - 'src/bookeater/services/version_backup.py'
+      - 'src/bookeater/runtime.py'
+      - 'tests/test_version_backup.py'
+      - 'tests/test_version_backup_retention.py'
+      - '.github/workflows/version-backup-tests.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install pytest
+      - run: pytest -q tests/test_version_backup.py tests/test_version_backup_retention.py
