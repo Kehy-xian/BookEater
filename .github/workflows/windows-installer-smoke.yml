@@ -1,0 +1,93 @@
+name: windows-installer-smoke
+on:
+  workflow_dispatch:
+  push:
+    branches: [sprint-04-play-loop]
+    paths:
+      - '.github/workflows/windows-installer-smoke.yml'
+      - 'installer/**'
+      - 'bookeater_desktop.py'
+      - 'BookEater.spec'
+      - 'requirements-build.txt'
+      - 'requirements-local-nlp.txt'
+      - 'tools/fetch_e5_model.py'
+      - 'tools/expand_bundled_sprites.py'
+      - 'tools/generate_paperling_sprites.py'
+      - 'tools/generate_route_sprites.py'
+      - 'tools/generate_subroute_sprites.py'
+      - 'tools/generate_extended_sprites.py'
+      - 'resources/catalog_endpoint.txt'
+      - 'resources/sprites/**'
+      - 'resources/sprite_archives/**'
+      - 'src/bookeater/**'
+
+jobs:
+  installer-smoke:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: 'utf-8'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Install build dependencies
+        run: python -m pip install -r requirements-build.txt
+      - name: Expand production sprites
+        run: python tools/expand_bundled_sprites.py
+      - name: Fetch bundled local model
+        run: python tools/fetch_e5_model.py
+      - name: Build desktop folder
+        run: pyinstaller --noconfirm --clean BookEater.spec
+      - name: Install Inno Setup compiler
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+      - name: Compile installer
+        shell: pwsh
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { throw 'ISCC.exe missing after Inno Setup install' }
+          & $iscc 'installer\BookEater.iss'
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compile exit=$LASTEXITCODE" }
+          if (-not (Test-Path 'dist\installer\BookEater-Setup.exe')) { throw 'BookEater-Setup.exe missing' }
+      - name: Install, run packaged smoke, uninstall, preserve user data
+        shell: pwsh
+        run: |
+          $setup = (Resolve-Path 'dist\installer\BookEater-Setup.exe').Path
+          $installDir = Join-Path $env:RUNNER_TEMP 'BookEaterInstalled'
+          $dataDir = Join-Path $env:RUNNER_TEMP 'BookEaterPersistentData'
+          $env:BOOKEATER_DATA_DIR = $dataDir
+
+          $install = Start-Process -FilePath $setup -ArgumentList @(
+            '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/DIR=$installDir"
+          ) -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "installer exit=$($install.ExitCode)" }
+
+          $exe = Join-Path $installDir 'BookEater.exe'
+          if (-not (Test-Path $exe)) { throw 'installed BookEater.exe missing' }
+          $smoke = Start-Process -FilePath $exe -ArgumentList '--smoke' -Wait -PassThru
+          if ($smoke.ExitCode -ne 0) { throw "installed smoke exit=$($smoke.ExitCode)" }
+
+          $db = Join-Path $dataDir 'bookeater.sqlite3'
+          if (-not (Test-Path $db)) { throw 'installed app did not create persistent database' }
+          $marker = Join-Path $dataDir 'installer-preserve-test.txt'
+          'must-survive-uninstall' | Set-Content -Encoding utf8 $marker
+
+          $uninstaller = Join-Path $installDir 'unins000.exe'
+          if (-not (Test-Path $uninstaller)) { throw 'uninstaller missing' }
+          $uninstall = Start-Process -FilePath $uninstaller -ArgumentList @(
+            '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'
+          ) -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "uninstaller exit=$($uninstall.ExitCode)" }
+
+          if (-not (Test-Path $db)) { throw 'uninstall deleted user database' }
+          if (-not (Test-Path $marker)) { throw 'uninstall deleted user data directory' }
+          Write-Host 'INSTALLER_PRESERVES_USER_DATA_OK'
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: BookEater-windows-installer
+          path: dist/installer/BookEater-Setup.exe
+          if-no-files-found: error
+          compression-level: 9
+          retention-days: 14
