@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Desktop-pet V6: optional first-meeting drop animation and per-user Windows autostart."""
 
+import queue
 import threading
 import webbrowser
 
@@ -143,6 +144,8 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
 
         update_button = ttk.Button(body, text='업데이트 확인')
         update_button.pack(anchor='w', pady=(7, 0))
+        update_results: queue.Queue[tuple[str, object]] = queue.Queue()
+        update_polling = {'active': False}
 
         def finish_update_check(result=None, error: str | None = None) -> None:
             try:
@@ -169,6 +172,25 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
                 download_button.configure(state='disabled')
                 msg.set('현재 버전이 최신입니다.')
 
+        def poll_update_results() -> None:
+            try:
+                if not win.winfo_exists():
+                    update_polling['active'] = False
+                    return
+            except tk.TclError:
+                update_polling['active'] = False
+                return
+            try:
+                kind, payload = update_results.get_nowait()
+            except queue.Empty:
+                win.after(100, poll_update_results)
+                return
+            update_polling['active'] = False
+            if kind == 'ok':
+                finish_update_check(payload)
+            else:
+                finish_update_check(error='업데이트 정보를 확인하지 못했어요. 기존 앱은 그대로 사용할 수 있습니다.')
+
         def check_update() -> None:
             update_button.configure(state='disabled')
             download_button.configure(state='disabled')
@@ -181,12 +203,14 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
 
             def work() -> None:
                 try:
-                    result = checker.check(current_version=APP_VERSION)
-                    win.after(0, lambda: finish_update_check(result))
+                    update_results.put(('ok', checker.check(current_version=APP_VERSION)))
                 except Exception:
-                    win.after(0, lambda: finish_update_check(error='업데이트 정보를 확인하지 못했어요. 기존 앱은 그대로 사용할 수 있습니다.'))
+                    update_results.put(('error', None))
 
             threading.Thread(target=work, name='bookeater-update-check', daemon=True).start()
+            if not update_polling['active']:
+                update_polling['active'] = True
+                win.after(100, poll_update_results)
 
         update_button.configure(command=check_update)
         ttk.Label(
