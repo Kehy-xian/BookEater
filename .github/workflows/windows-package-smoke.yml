@@ -28,6 +28,7 @@ on:
       - 'src/bookeater/pet_window_v7.py'
       - 'src/bookeater/pet_window_v8.py'
       - 'src/bookeater/pet_window_v9.py'
+      - 'src/bookeater/pet_window_v10.py'
       - 'src/bookeater/pet_art.py'
       - 'src/bookeater/pet_sprite.py'
       - 'src/bookeater/pet_fallback_forms.py'
@@ -112,8 +113,10 @@ jobs:
           미확정 최종 12종은 코드가 임의의 외형을 만들지 않고 가장 가까운 승인 2차 PNG를 상속합니다.
           데이터 관리에서 기록 내보내기(.bookeater-seed), 기록 심기, 기록·유전정보 초기화를 사용할 수 있습니다.
           심기/초기화 전 현재 프로필은 자동 백업되며 기기 설정과 교체 아트는 유지됩니다.
+          책 추천 UI는 실제 카탈로그 후보가 연결된 경우에만 작동하며, 취향 정렬은 로컬에서 수행합니다.
+          카탈로그 서버가 설정되지 않은 배포본은 임의의 책을 만들어내지 않고 추천을 비활성화합니다.
           기록/서재/도감/기억/대사/돌보기/미니게임/첫 만남/자동실행 기능이 포함되어 있습니다.
-          정식 설치 프로그램/코드 서명/자동 업데이트/실제 도서 추천 공급자 연결은 아직 개발 중입니다.
+          정식 설치 프로그램/코드 서명/자동 업데이트/카탈로그 서버 배포는 아직 개발 중입니다.
 
           Build commit: $env:GITHUB_SHA
           "@ | Set-Content -Encoding utf8 'dist/BookEater/README_FIRST.txt'
