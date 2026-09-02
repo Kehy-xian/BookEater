@@ -10,7 +10,10 @@ on:
       - 'requirements-build.txt'
       - 'requirements-local-nlp.txt'
       - 'tools/fetch_e5_model.py'
+      - 'tools/expand_bundled_sprites.py'
+      - 'tools/validate_sprite_pack.py'
       - 'resources/sprites/**'
+      - 'resources/sprite_archives/**'
       - 'src/bookeater/desktop.py'
       - 'src/bookeater/pet_window.py'
       - 'src/bookeater/pet_window_v2.py'
@@ -23,6 +26,8 @@ on:
       - 'src/bookeater/pet_art.py'
       - 'src/bookeater/pet_sprite.py'
       - 'src/bookeater/pet_fallback_forms.py'
+      - 'src/bookeater/sprite_validation.py'
+      - 'src/bookeater/art_override_store.py'
       - 'src/bookeater/pet_behavior.py'
       - 'src/bookeater/runtime.py'
       - 'src/bookeater/storage/**'
@@ -41,6 +46,10 @@ jobs:
         with: {python-version: '3.12'}
       - name: Install build dependencies
         run: python -m pip install -r requirements-build.txt
+      - name: Expand bundled production sprites
+        run: |
+          python tools/expand_bundled_sprites.py
+          python tools/validate_sprite_pack.py resources/sprites paperling --states idle,eat,walk
       - name: Fetch bundled local model
         run: python tools/fetch_e5_model.py
       - name: Build one-folder desktop app
@@ -52,9 +61,13 @@ jobs:
           $onnx = Get-ChildItem 'dist/BookEater' -Recurse -Filter model.onnx | Select-Object -First 1
           $tok = Get-ChildItem 'dist/BookEater' -Recurse -Filter tokenizer.json | Select-Object -First 1
           $spriteReadme = Get-ChildItem 'dist/BookEater' -Recurse -Filter README.txt | Where-Object { $_.FullName -match 'resources[\\/]sprites' } | Select-Object -First 1
+          $starterIdle = Get-ChildItem 'dist/BookEater' -Recurse -Filter paperling_idle_00.png | Select-Object -First 1
+          $starterEat = Get-ChildItem 'dist/BookEater' -Recurse -Filter paperling_eat_05.png | Select-Object -First 1
+          $starterWalk = Get-ChildItem 'dist/BookEater' -Recurse -Filter paperling_walk_03.png | Select-Object -First 1
           if (-not $onnx) { throw 'bundled model.onnx missing' }
           if (-not $tok) { throw 'bundled tokenizer.json missing' }
           if (-not $spriteReadme) { throw 'sprite resource directory missing' }
+          if (-not $starterIdle -or -not $starterEat -or -not $starterWalk) { throw 'approved paperling production frames missing' }
           Write-Host "EXE bytes=$((Get-Item 'dist/BookEater/BookEater.exe').Length)"
           Write-Host "bundle MB=$([math]::Round(((Get-ChildItem 'dist/BookEater' -Recurse -File | Measure-Object Length -Sum).Sum / 1MB),1))"
       - name: Headless packaged-runtime smoke
@@ -75,8 +88,9 @@ jobs:
           진화 기록 수 게이트는 0~15 글씨알, 16~30 1차, 31~54 2차, 55+ 최종이며
           모든 단계에서 성향 신호가 불충분하면 억지로 진화하지 않습니다.
           현재 A/B/C 진화 혈통이 단일 성장 체계이며, 세계 주제는 별도 외형 모티프로 누적됩니다.
-          실제 투명 PNG 프레임이 완성된 form/state는 자동으로 production sprite를 사용하고,
-          프레임이 없거나 깨졌으면 승인된 가장 가까운 혈통 실루엣의 벡터 fallback을 사용합니다.
+          글씨알의 IDLE/EAT/WALK는 승인된 픽셀 아트를 production sprite로 사용합니다.
+          디자인은 사용자 데이터의 versioned art override로 안전하게 교체할 수 있습니다.
+          프레임이 없거나 깨졌으면 패키지 기본 PNG, 그마저 없으면 승인된 혈통 벡터 fallback을 사용합니다.
           미확정 최종형은 코드가 임의의 외형을 만들지 않고 승인된 2차 실루엣을 유지합니다.
           기록/서재/도감/기억/대사/돌보기/미니게임/첫 만남/자동실행 기능이 포함되어 있습니다.
           정식 설치 프로그램/코드 서명/자동 업데이트/실제 도서 추천 공급자 연결은 아직 개발 중입니다.
