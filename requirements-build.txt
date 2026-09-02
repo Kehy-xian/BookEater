@@ -1,2 +1,3 @@
 -r requirements-local-nlp.txt
 pyinstaller>=6.15,<7
+Pillow>=10.4,<13
