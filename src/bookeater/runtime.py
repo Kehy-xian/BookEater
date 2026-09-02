@@ -15,6 +15,7 @@ import sys
 import threading
 from typing import Any
 
+from .game.growth_routes import lineage_path
 from .game.loop import ReadingFeedService
 from .storage.sqlite_store import SQLiteGameStore
 from .storage.journal import ReadingJournalStore
@@ -142,11 +143,16 @@ def bootstrap_runtime(
         journal = ReadingJournalStore(db_path)
         milestones = MonsterMilestoneStore(db_path)
         encyclopedia = MonsterEncyclopediaStore(db_path)
-    except (OSError, sqlite3.DatabaseError) as exc:
+
+        # If the app was interrupted after the atomic state commit but before the secondary
+        # encyclopedia write, restore every ancestor from the durable current form on startup.
+        for form_id in lineage_path(store.load_state().form_id):
+            encyclopedia.unlock(form_id)
+    except (OSError, sqlite3.DatabaseError, ValueError) as exc:
         raise RuntimeStartupError('local BookEater data could not be opened safely') from exc
 
     analyzer = LazyLocalAnalyzer(model_dir)
-    service = ReadingFeedService(store, analyzer)
+    service = ReadingFeedService(store, analyzer, encyclopedia=encyclopedia)
     return BookEaterRuntime(
         data, db_path, model_dir, store, journal, milestones, encyclopedia, analyzer, service
     )
