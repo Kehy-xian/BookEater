@@ -16,7 +16,9 @@ on:
       - 'tools/generate_route_sprites.py'
       - 'tools/generate_subroute_sprites.py'
       - 'tools/generate_extended_sprites.py'
+      - 'tools/build_update_manifest.py'
       - 'resources/catalog_endpoint.txt'
+      - 'resources/update_manifest_endpoint.txt'
       - 'resources/sprites/**'
       - 'resources/sprite_archives/**'
       - 'src/bookeater/**'
@@ -50,6 +52,18 @@ jobs:
           & $iscc 'installer\BookEater.iss'
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup compile exit=$LASTEXITCODE" }
           if (-not (Test-Path 'dist\installer\BookEater-Setup.exe')) { throw 'BookEater-Setup.exe missing' }
+      - name: Build and verify update manifest contract
+        shell: pwsh
+        run: |
+          python tools/build_update_manifest.py `
+            --installer 'dist\installer\BookEater-Setup.exe' `
+            --url 'https://downloads.example.com/BookEater-Setup.exe' `
+            --output 'dist\installer\latest.smoke.json' `
+            --notes 'CI manifest contract check'
+          $manifest = Get-Content 'dist\installer\latest.smoke.json' -Raw | ConvertFrom-Json
+          $hash = (Get-FileHash 'dist\installer\BookEater-Setup.exe' -Algorithm SHA256).Hash.ToLower()
+          if ($manifest.sha256 -ne $hash) { throw 'manifest SHA256 does not match installer bytes' }
+          if ($manifest.installer_url -notmatch '^https://') { throw 'manifest installer URL is not HTTPS' }
       - name: Install, run packaged smoke, uninstall, preserve user data
         shell: pwsh
         run: |
