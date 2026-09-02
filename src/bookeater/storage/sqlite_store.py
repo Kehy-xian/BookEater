@@ -30,6 +30,7 @@ class StateRow:
     stage: int
     species: str
     stats: dict[str, float]
+    form_id: str = 'starter'
 
 
 @dataclass(frozen=True)
@@ -76,7 +77,8 @@ class SQLiteGameStore:
                     current_base TEXT,
                     stage INTEGER NOT NULL DEFAULT 0,
                     species TEXT NOT NULL DEFAULT '글씨알',
-                    stats_json TEXT NOT NULL DEFAULT '{}'
+                    stats_json TEXT NOT NULL DEFAULT '{}',
+                    form_id TEXT NOT NULL DEFAULT 'starter'
                 );
 
                 CREATE TABLE IF NOT EXISTS reading_entries (
@@ -96,6 +98,15 @@ class SQLiteGameStore:
                 INSERT OR IGNORE INTO monster_state(singleton) VALUES(1);
                 """
             )
+            # Migration for existing playable databases: add the route-form pointer in place.
+            # Never rebuild/drop monster_state because that could destroy accumulated reading data.
+            columns = {
+                str(row['name']) for row in con.execute('PRAGMA table_info(monster_state)').fetchall()
+            }
+            if 'form_id' not in columns:
+                con.execute(
+                    "ALTER TABLE monster_state ADD COLUMN form_id TEXT NOT NULL DEFAULT 'starter'"
+                )
             con.commit()
         finally:
             con.close()
@@ -130,7 +141,7 @@ class SQLiteGameStore:
         con = self._connect()
         try:
             row = con.execute(
-                'SELECT revision,entry_count,current_base,stage,species,stats_json '
+                'SELECT revision,entry_count,current_base,stage,species,stats_json,form_id '
                 'FROM monster_state WHERE singleton=1'
             ).fetchone()
             if row is None:
@@ -142,6 +153,7 @@ class SQLiteGameStore:
                 stage=max(0, int(row['stage'])),
                 species=str(row['species']),
                 stats=self._safe_stats(row['stats_json']),
+                form_id=str(row['form_id'] or 'starter'),
             )
         finally:
             con.close()
@@ -240,6 +252,7 @@ class SQLiteGameStore:
         public_payload: Mapping[str, Any],
         model_version: str | None,
         nutrition_policy: str | None,
+        form_id: str | None = None,
     ) -> dict[str, Any]:
         """Atomically consume one pending note and advance aggregate monster state.
 
@@ -263,7 +276,7 @@ class SQLiteGameStore:
                 return payload
 
             state = con.execute(
-                'SELECT revision FROM monster_state WHERE singleton=1'
+                'SELECT revision,form_id FROM monster_state WHERE singleton=1'
             ).fetchone()
             if state is None:
                 con.rollback()
@@ -280,11 +293,15 @@ class SQLiteGameStore:
                     continue
             payload_json = json.dumps(dict(public_payload), ensure_ascii=False, separators=(',', ':'))
             stats_json = json.dumps(clean_stats, ensure_ascii=False, separators=(',', ':'))
+            next_form = str(form_id or state['form_id'] or 'starter')
 
             con.execute(
-                'UPDATE monster_state SET revision=revision+1,entry_count=?,current_base=?,stage=?,species=?,stats_json=? '
+                'UPDATE monster_state SET revision=revision+1,entry_count=?,current_base=?,stage=?,species=?,stats_json=?,form_id=? '
                 'WHERE singleton=1',
-                (max(0, int(entry_count)), current_base, max(0, int(stage)), str(species), stats_json),
+                (
+                    max(0, int(entry_count)), current_base, max(0, int(stage)), str(species),
+                    stats_json, next_form,
+                ),
             )
             con.execute(
                 "UPDATE reading_entries SET status='fed',public_json=?,model_version=?,nutrition_policy=?,"
