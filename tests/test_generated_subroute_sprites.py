@@ -13,6 +13,20 @@ from generate_subroute_sprites import generate_all_subroute_core_frames
 SLUGS = ('route_a1', 'route_a2', 'route_b1', 'route_b2', 'route_c1', 'route_c2')
 
 
+def _dark_ratio(image: Image.Image, box=(76, 76, 115, 119)) -> float:
+    """Measure dark-core coverage without depending on one eye/window pixel.
+
+    Light eyes and B2 window bars are intentionally part of the designs, so one coordinate is a
+    brittle lineage check. A region ratio verifies the actual face substrate instead: A should be
+    mostly ivory paper while B/C should be mostly dark core.
+    """
+    region = image.crop(box).convert('RGBA')
+    visible = [px for px in region.getdata() if px[3] > 0]
+    assert visible
+    dark = [px for px in visible if sum(px[:3]) / 3 < 120]
+    return len(dark) / len(visible)
+
+
 def test_generated_subroute_packs_are_complete(tmp_path):
     files = generate_all_subroute_core_frames(tmp_path)
     assert len(files) == 84
@@ -23,16 +37,15 @@ def test_generated_subroute_packs_are_complete(tmp_path):
 def test_subroute_faces_preserve_parent_lineage(tmp_path):
     generate_all_subroute_core_frames(tmp_path)
     imgs = {slug: Image.open(tmp_path / f'{slug}_idle_00.png').convert('RGBA') for slug in SLUGS}
+    ratios = {slug: _dark_ratio(img) for slug, img in imgs.items()}
 
     # A descendants keep a light paper face rather than inheriting B/C's dark core.
     for slug in ('route_a1', 'route_a2'):
-        px = imgs[slug].getpixel((82, 90))[:3]
-        assert sum(px) > 450
+        assert ratios[slug] < 0.32, f'{slug} unexpectedly looks dark-core: ratio={ratios[slug]:.3f}'
 
-    # B/C descendants retain a dark inner core. Sample off-center so B2's window bars do not mask it.
+    # B/C descendants retain a dark inner core despite bright eyes or shell/window details.
     for slug in ('route_b1', 'route_b2', 'route_c1', 'route_c2'):
-        px = imgs[slug].getpixel((82, 90))[:3]
-        assert sum(px) < 250
+        assert ratios[slug] > 0.42, f'{slug} lost its dark-core lineage: ratio={ratios[slug]:.3f}'
 
     # Sibling silhouettes are materially different, not simple face swaps.
     assert imgs['route_a1'].tobytes() != imgs['route_a2'].tobytes()
