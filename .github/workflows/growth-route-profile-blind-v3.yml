@@ -1,0 +1,17 @@
+name: growth-route-profile-blind-v3
+on:
+  workflow_dispatch:
+  push:
+    branches: [sprint-04-play-loop]
+    paths:
+      - 'ci/growth_route_profile_blind_v3.py'
+      - '.github/workflows/growth-route-profile-blind-v3.yml'
+jobs:
+  blind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Fresh growth profile blind v3
+        run: python ci/growth_route_profile_blind_v3.py
