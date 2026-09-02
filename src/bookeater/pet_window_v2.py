@@ -3,7 +3,7 @@ from __future__ import annotations
 """Second desktop-pet shell layer.
 
 V2 keeps the proven feed/library behavior from DesktopPetWindow and adds player-facing collection
-UI plus a more grounded idle breathing motion.  Production PNG sprites can replace this renderer
+UI plus a more grounded idle breathing motion. Production PNG sprites can replace this renderer
 later without changing the panels or reading pipeline.
 """
 
@@ -48,7 +48,9 @@ class DesktopPetWindowV2(DesktopPetWindow):
             found = form.form_id in encountered
             if found:
                 name = entry.public_name
-                if entry.concept_approved:
+                if entry.sprite_ready:
+                    status = '발견 · 게임 아트 준비됨'
+                elif entry.concept_approved:
                     status = '발견 · 스프라이트 준비중'
                 else:
                     status = '발견 · 이미지 추후 업데이트'
@@ -75,11 +77,12 @@ class DesktopPetWindowV2(DesktopPetWindow):
             if form_id not in encountered:
                 detail.configure(text='아직 만나지 못한 몬스터다. 어떤 기록을 먹으면 만날 수 있을지는 비밀이다.')
                 return
-            art_note = (
-                '현재 콘셉트는 확정됐고 실제 게임용 스프라이트를 준비 중이다.'
-                if entry.concept_approved
-                else '이 진화형의 이미지 자리는 확보되어 있으며 아트는 추후 업데이트된다.'
-            )
+            if entry.sprite_ready:
+                art_note = '현재 게임에서 사용하는 아트가 준비되어 있다. 디자인은 이후에도 교체될 수 있다.'
+            elif entry.concept_approved:
+                art_note = '현재 콘셉트는 확정됐고 실제 게임용 스프라이트를 준비 중이다.'
+            else:
+                art_note = '이 진화형의 이미지 자리는 확보되어 있으며 아트는 추후 업데이트된다.'
             detail.configure(text=f'{entry.hint}\n{art_note}')
 
         tree.bind('<<TreeviewSelect>>', show_detail)
