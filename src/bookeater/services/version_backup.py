@@ -13,6 +13,7 @@ import re
 import sqlite3
 
 VERSION_MARKER = 'last_successful_app_version.txt'
+DEFAULT_VERSION_BACKUP_RETENTION = 5
 _SAFE = re.compile(r'[^0-9A-Za-z._-]+')
 
 
@@ -48,8 +49,44 @@ def mark_version_success(data_dir: str | Path, version: str) -> None:
     temp.replace(marker)
 
 
+def _backup_folder(data_dir: str | Path) -> Path:
+    return Path(data_dir) / 'backups' / 'version-upgrades'
+
+
+def prune_version_backups(
+    data_dir: str | Path,
+    *,
+    keep: int = DEFAULT_VERSION_BACKUP_RETENTION,
+) -> list[Path]:
+    """Best-effort retention for automatic *version-upgrade* SQLite snapshots only.
+
+    Portable ``.bookeater-seed`` backups and unrelated files are deliberately outside this scope.
+    Failure to delete an old automatic snapshot is harmless and must never block app startup.
+    """
+    keep = max(1, int(keep))
+    folder = _backup_folder(data_dir)
+    if not folder.is_dir():
+        return []
+    try:
+        candidates = sorted(
+            (p for p in folder.glob('*.sqlite3') if p.is_file()),
+            key=lambda p: (p.stat().st_mtime_ns, p.name),
+        )
+    except OSError:
+        return []
+    excess = candidates[:-keep]
+    removed: list[Path] = []
+    for path in excess:
+        try:
+            path.unlink()
+            removed.append(path)
+        except OSError:
+            continue
+    return removed
+
+
 def _backup_destination(data_dir: Path, previous: str | None, current: str) -> Path:
-    folder = data_dir / 'backups' / 'version-upgrades'
+    folder = _backup_folder(data_dir)
     folder.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
     stem = f'pre-version-{_slug(previous or "unknown")}-to-{_slug(current)}-{stamp}'
@@ -102,4 +139,7 @@ def prepare_version_transition(
     if not db.is_file() or previous == current_version:
         return None
     destination = _backup_destination(data, previous, current_version)
-    return backup_live_database(db, destination)
+    created = backup_live_database(db, destination)
+    # Retention is intentionally best-effort and runs only after a verified new snapshot exists.
+    prune_version_backups(data)
+    return created
