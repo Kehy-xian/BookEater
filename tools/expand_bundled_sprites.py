@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / 'src'))
 
 from bookeater.pet_art import GEULSSIAL_ANIMATIONS, frame_filename
 from bookeater.sprite_validation import SPRITE_HEIGHT, SPRITE_WIDTH, validate_sprite_pack
+from generate_extended_sprites import APPROVED_SLUGS, DERIVED_STATES, ensure_all_derived_states
 from generate_paperling_sprites import generate_paperling_core_frames
 from generate_route_sprites import generate_route_core_frames
 from generate_subroute_sprites import generate_subroute_core_frames
@@ -19,6 +20,7 @@ from generate_subroute_sprites import generate_subroute_core_frames
 ARCHIVE_DIR = ROOT / 'resources' / 'sprite_archives'
 SPRITE_DIR = ROOT / 'resources' / 'sprites'
 CORE_STATES = ('idle', 'eat', 'walk')
+ALL_PRODUCTION_STATES = CORE_STATES + DERIVED_STATES
 ATLAS_COLUMNS = 7
 ATLAS_ROWS = 2
 
@@ -64,12 +66,12 @@ def _decode_atlas(parts: tuple[Path, ...]):
     return image.convert('RGBA')
 
 
-def _issues_for(slug: str, target: Path = SPRITE_DIR):
-    return validate_sprite_pack(target, slug, required_states=CORE_STATES)
+def _issues_for(slug: str, target: Path = SPRITE_DIR, *, states=CORE_STATES):
+    return validate_sprite_pack(target, slug, required_states=tuple(states))
 
 
-def _validate(slug: str, target: Path = SPRITE_DIR) -> None:
-    issues = _issues_for(slug, target)
+def _validate(slug: str, target: Path = SPRITE_DIR, *, states=CORE_STATES) -> None:
+    issues = _issues_for(slug, target, states=states)
     if issues:
         detail = '; '.join(f'{x.code}:{x.path.name}' for x in issues[:8])
         raise RuntimeError(f'{slug} sprite validation failed: {detail}')
@@ -78,7 +80,10 @@ def _validate(slug: str, target: Path = SPRITE_DIR) -> None:
 def _existing_core_files(slug: str) -> tuple[Path, ...]:
     if not SPRITE_DIR.is_dir():
         return ()
-    return tuple(SPRITE_DIR.glob(f'{slug}_*.png'))
+    names: list[Path] = []
+    for state in CORE_STATES:
+        names.extend(SPRITE_DIR.glob(f'{slug}_{state}_*.png'))
+    return tuple(names)
 
 
 def expand_paperling() -> str:
@@ -134,7 +139,18 @@ def main() -> int:
         sources[slug] = _ensure_generated(slug, generate_route_core_frames)
     for slug in SUBROUTE_SLUGS:
         sources[slug] = _ensure_generated(slug, generate_subroute_core_frames)
-    print('BUNDLED_SPRITES_EXPANDED ' + ' '.join(f'{k}={v}' for k, v in sources.items()))
+
+    derived = ensure_all_derived_states(SPRITE_DIR)
+    for slug in APPROVED_SLUGS:
+        _validate(slug, states=ALL_PRODUCTION_STATES)
+
+    derived_count = sum(value == 'derived' for value in derived.values())
+    packaged_count = sum(value == 'packaged' for value in derived.values())
+    print(
+        'BUNDLED_SPRITES_EXPANDED '
+        + ' '.join(f'{k}={v}' for k, v in sources.items())
+        + f' derived={derived_count} extended_packaged={packaged_count}'
+    )
     return 0
 
 
