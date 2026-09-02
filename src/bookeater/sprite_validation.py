@@ -10,6 +10,7 @@ canvas; visual content inside that canvas may change freely at any time.
 from dataclasses import dataclass
 from pathlib import Path
 import struct
+import zlib
 
 from .pet_art import GEULSSIAL_ANIMATIONS, frame_filename
 
@@ -34,28 +35,70 @@ class SpritePackIssue:
     message: str
 
 
+def _read_exact(stream, size: int, label: str) -> bytes:
+    data = stream.read(size)
+    if len(data) != size:
+        raise ValueError(f'PNG {label} is truncated')
+    return data
+
+
 def read_png_info(path: str | Path) -> PngInfo:
+    """Read PNG metadata while validating chunk boundaries and CRC integrity."""
     p = Path(path)
     with p.open('rb') as f:
-        signature = f.read(8)
-        if signature != PNG_SIGNATURE:
+        if _read_exact(f, 8, 'signature') != PNG_SIGNATURE:
             raise ValueError('invalid PNG signature')
-        length_raw = f.read(4)
-        chunk_type = f.read(4)
-        if len(length_raw) != 4 or chunk_type != b'IHDR':
+
+        info: PngInfo | None = None
+        seen_idat = False
+        seen_iend = False
+        chunk_index = 0
+
+        while not seen_iend:
+            length_raw = f.read(4)
+            if not length_raw:
+                raise ValueError('PNG IEND is missing')
+            if len(length_raw) != 4:
+                raise ValueError('PNG chunk length is truncated')
+            length = struct.unpack('>I', length_raw)[0]
+            chunk_type = _read_exact(f, 4, 'chunk type')
+            label = chunk_type.decode('latin1', errors='replace')
+            data = _read_exact(f, length, label)
+            crc_raw = _read_exact(f, 4, 'chunk CRC')
+            expected_crc = struct.unpack('>I', crc_raw)[0]
+            actual_crc = zlib.crc32(chunk_type)
+            actual_crc = zlib.crc32(data, actual_crc) & 0xFFFFFFFF
+            if expected_crc != actual_crc:
+                raise ValueError(f'PNG {label} CRC mismatch')
+
+            if chunk_index == 0 and chunk_type != b'IHDR':
+                raise ValueError('PNG IHDR must be the first chunk')
+            if chunk_type == b'IHDR':
+                if info is not None or length != 13:
+                    raise ValueError('PNG IHDR is duplicated or invalid')
+                width, height, bit_depth, color_type, compression, filter_method, interlace = struct.unpack(
+                    '>IIBBBBB', data
+                )
+                if width <= 0 or height <= 0:
+                    raise ValueError('PNG dimensions must be positive')
+                if compression != 0 or filter_method != 0 or interlace not in {0, 1}:
+                    raise ValueError('PNG IHDR uses unsupported metadata')
+                info = PngInfo(width, height, bit_depth, color_type)
+            elif chunk_type == b'IDAT':
+                seen_idat = True
+            elif chunk_type == b'IEND':
+                if length != 0:
+                    raise ValueError('PNG IEND must be empty')
+                seen_iend = True
+            chunk_index += 1
+
+        if info is None:
             raise ValueError('PNG IHDR is missing')
-        length = struct.unpack('>I', length_raw)[0]
-        if length != 13:
-            raise ValueError('PNG IHDR length is invalid')
-        payload = f.read(13)
-        if len(payload) != 13:
-            raise ValueError('PNG IHDR is truncated')
-        width, height, bit_depth, color_type, _compression, _filter, _interlace = struct.unpack(
-            '>IIBBBBB', payload
-        )
-        if width <= 0 or height <= 0:
-            raise ValueError('PNG dimensions must be positive')
-        return PngInfo(width, height, bit_depth, color_type)
+        if not seen_idat:
+            raise ValueError('PNG IDAT is missing')
+        if f.read(1):
+            raise ValueError('PNG has unexpected trailing bytes after IEND')
+        return info
 
 
 def validate_frame(path: str | Path) -> tuple[SpritePackIssue, ...]:
