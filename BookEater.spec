@@ -5,6 +5,7 @@ from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules
 ROOT = Path(SPEC).resolve().parent
 MODEL_DIR = ROOT / 'resources' / 'models' / 'multilingual-e5-small-onnx'
 SPRITE_DIR = ROOT / 'resources' / 'sprites'
+CATALOG_ENDPOINT_FILE = ROOT / 'resources' / 'catalog_endpoint.txt'
 
 if not (MODEL_DIR / 'model.onnx').is_file() or not (MODEL_DIR / 'tokenizer.json').is_file():
     raise SystemExit('Bundled E5 model files are missing; run tools/fetch_e5_model.py first.')
@@ -14,6 +15,8 @@ binaries = collect_dynamic_libs('onnxruntime')
 datas = [(str(MODEL_DIR), 'resources/models/multilingual-e5-small-onnx')]
 if SPRITE_DIR.is_dir():
     datas.append((str(SPRITE_DIR), 'resources/sprites'))
+if CATALOG_ENDPOINT_FILE.is_file():
+    datas.append((str(CATALOG_ENDPOINT_FILE), 'resources'))
 
 a = Analysis(
     ['bookeater_desktop.py'],
