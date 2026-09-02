@@ -154,10 +154,10 @@ def test_bookkeeping_note_cannot_mutate_hidden_traits_even_with_strong_fake_labe
     assert state.entry_count == 0
 
 
-def test_five_consistent_notes_reach_route_a_without_exposing_recipe(tmp_path):
+def test_sixteen_consistent_notes_reach_route_a_without_exposing_recipe(tmp_path):
     store, _, service = make_service(tmp_path)
     last = None
-    for i in range(5):
+    for i in range(16):
         last = service.submit(f't{i}', f'이 선택이 옳은지 의미를 오래 생각했다. {i}')
     assert last is not None and last.growth is not None
     assert last.growth.stage == 1
@@ -166,6 +166,16 @@ def test_five_consistent_notes_reach_route_a_without_exposing_recipe(tmp_path):
     public = json.dumps(last.to_public_dict(), ensure_ascii=False)
     for token in FORBIDDEN_PUBLIC_TOKENS:
         assert token not in public
+
+
+def test_fifteen_consistent_notes_still_keep_starter(tmp_path):
+    store, _, service = make_service(tmp_path)
+    last = None
+    for i in range(15):
+        last = service.submit(f'pre{i}', f'이 선택이 옳은지 의미를 오래 생각했다. {i}')
+    assert last is not None and last.growth is not None
+    assert last.growth.stage == 0
+    assert store.load_state().form_id == 'starter'
 
 
 def test_public_receipt_has_strict_allow_list(tmp_path):
@@ -204,15 +214,14 @@ def test_blank_note_is_rejected_before_any_row_is_created(tmp_path):
     assert store.count_notes() == 0
 
 
-def test_many_neutral_notes_age_the_history_but_do_not_force_evolution(tmp_path):
+def test_many_neutral_notes_cross_all_count_gates_but_do_not_force_evolution(tmp_path):
     store, _, service = make_service(tmp_path, StaticAnalyzer(payload={}))
-    for i in range(45):
+    for i in range(60):
         service.submit(f'n{i}', f'오늘 읽은 기록 {i}')
     state = store.load_state()
-    assert state.entry_count == 45
+    assert state.entry_count == 60
     assert state.stats == {}
     assert state.current_base is None
-    # Count thresholds make evolution eligible, but a route is never invented without evidence.
     assert state.stage == 0
     assert state.form_id == 'starter'
     assert state.species == '글씨알'
