@@ -2,9 +2,9 @@ from __future__ import annotations
 
 """Crash-resistant local draft for the currently edited reading note.
 
-Final reading entries are already committed to SQLite when the user feeds them.  This store protects
+Final reading entries are already committed to SQLite when the user feeds them. This store protects
 only text that has not been submitted yet, so there is no separate manual save state to reconcile
-with monster genetics.  Drafts are deliberately excluded from portable seed exports because they
+with monster genetics. Drafts are deliberately excluded from portable seed exports because they
 are not reading records yet.
 """
 
@@ -42,7 +42,7 @@ class ReadingDraftStore:
     def _init_db(self) -> None:
         con = self._connect()
         try:
-            con.execute(
+            con.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS reading_draft (
                     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
@@ -50,7 +50,17 @@ class ReadingDraftStore:
                     progress_text TEXT NOT NULL DEFAULT '',
                     note_text TEXT NOT NULL DEFAULT '',
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
+                );
+
+                -- Profile planting/reset replaces monster_milestones inside its destructive SQLite
+                -- transaction. Clearing the transient draft from that same transaction prevents an
+                -- old unsent note from surviving halfway into a newly planted bookshelf if the
+                -- process crashes between profile replacement and normal post-cleanup.
+                CREATE TRIGGER IF NOT EXISTS trg_bookeater_clear_draft_on_profile_replace
+                AFTER DELETE ON monster_milestones
+                BEGIN
+                    DELETE FROM reading_draft;
+                END;
                 """
             )
             con.commit()
