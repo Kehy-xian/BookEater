@@ -21,7 +21,7 @@ def test_care_actions_change_only_care_state(tmp_path):
     assert game.load_state() == before_growth
 
 
-def test_play_wash_and_minigame_are_bounded():
+def test_play_wash_and_minigame_are_bounded(tmp_path):
     db = tmp_path / 'game.sqlite3'
     care = MonsterCareStore(db)
     for _ in range(20):
