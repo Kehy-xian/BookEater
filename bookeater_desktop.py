@@ -8,6 +8,7 @@ from bookeater.pet_window_v11 import run_pet_v11
 from bookeater.runtime import bootstrap_runtime
 from bookeater.services.catalog import CatalogClient, configured_catalog_client
 from bookeater.services.data_transfer import SEED_FORMAT, SEED_VERSION
+from bookeater.services.single_instance import acquire_single_instance, windows_mutex_self_test
 
 
 def _smoke() -> int:
@@ -43,9 +44,42 @@ def _smoke() -> int:
     )) else 3
 
 
+def _run_single_pet() -> int:
+    try:
+        guard = acquire_single_instance()
+    except Exception:
+        # Failing to create the mutex should fail closed: two simultaneous writers are riskier than
+        # refusing one launch. Keep the message independent of the main runtime/database.
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk(); root.withdraw()
+            messagebox.showerror('책먹는 몬스터', '중복 실행 방지 장치를 시작하지 못해 실행을 중단했어요.')
+            root.destroy()
+        except Exception:
+            pass
+        return 4
+    if not guard.acquired:
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk(); root.withdraw()
+            messagebox.showinfo('책먹는 몬스터', '책먹는 몬스터가 이미 실행 중이에요.')
+            root.destroy()
+        except Exception:
+            pass
+        return 0
+    try:
+        return run_pet_v11()
+    finally:
+        guard.close()
+
+
 if __name__ == '__main__':
     if '--smoke' in sys.argv:
         raise SystemExit(_smoke())
+    if '--mutex-smoke' in sys.argv:
+        raise SystemExit(0 if windows_mutex_self_test() else 5)
     if '--full-window' in sys.argv:
         raise SystemExit(run_desktop())
-    raise SystemExit(run_pet_v11())
+    raise SystemExit(_run_single_pet())
