@@ -1,3 +1,4 @@
+# Full core regression; intentionally re-run after packaged Windows mutex validation.
 name: python-core-tests
 on:
   workflow_dispatch:
