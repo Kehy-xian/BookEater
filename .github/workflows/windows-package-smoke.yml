@@ -13,6 +13,7 @@ on:
       - 'tools/expand_bundled_sprites.py'
       - 'tools/generate_paperling_sprites.py'
       - 'tools/generate_route_sprites.py'
+      - 'tools/generate_subroute_sprites.py'
       - 'tools/validate_sprite_pack.py'
       - 'resources/sprites/**'
       - 'resources/sprite_archives/**'
@@ -53,6 +54,12 @@ jobs:
           python tools/validate_sprite_pack.py resources/sprites pagedge --states idle,eat,walk
           python tools/validate_sprite_pack.py resources/sprites inknest --states idle,eat,walk
           python tools/validate_sprite_pack.py resources/sprites lantern --states idle,eat,walk
+          python tools/validate_sprite_pack.py resources/sprites route_a1 --states idle,eat,walk
+          python tools/validate_sprite_pack.py resources/sprites route_a2 --states idle,eat,walk
+          python tools/validate_sprite_pack.py resources/sprites route_b1 --states idle,eat,walk
+          python tools/validate_sprite_pack.py resources/sprites route_b2 --states idle,eat,walk
+          python tools/validate_sprite_pack.py resources/sprites route_c1 --states idle,eat,walk
+          python tools/validate_sprite_pack.py resources/sprites route_c2 --states idle,eat,walk
       - name: Fetch bundled local model
         run: python tools/fetch_e5_model.py
       - name: Build one-folder desktop app
@@ -64,18 +71,15 @@ jobs:
           $onnx = Get-ChildItem 'dist/BookEater' -Recurse -Filter model.onnx | Select-Object -First 1
           $tok = Get-ChildItem 'dist/BookEater' -Recurse -Filter tokenizer.json | Select-Object -First 1
           $spriteReadme = Get-ChildItem 'dist/BookEater' -Recurse -Filter README.txt | Where-Object { $_.FullName -match 'resources[\\/]sprites' } | Select-Object -First 1
-          $requiredSprites = @(
-            'paperling_idle_00.png','paperling_eat_05.png','paperling_walk_03.png',
-            'pagedge_idle_00.png','pagedge_eat_05.png','pagedge_walk_03.png',
-            'inknest_idle_00.png','inknest_eat_05.png','inknest_walk_03.png',
-            'lantern_idle_00.png','lantern_eat_05.png','lantern_walk_03.png'
-          )
+          $requiredSlugs = @('paperling','pagedge','inknest','lantern','route_a1','route_a2','route_b1','route_b2','route_c1','route_c2')
           if (-not $onnx) { throw 'bundled model.onnx missing' }
           if (-not $tok) { throw 'bundled tokenizer.json missing' }
           if (-not $spriteReadme) { throw 'sprite resource directory missing' }
-          foreach ($name in $requiredSprites) {
-            $hit = Get-ChildItem 'dist/BookEater' -Recurse -Filter $name | Select-Object -First 1
-            if (-not $hit) { throw "required production sprite missing: $name" }
+          foreach ($slug in $requiredSlugs) {
+            foreach ($name in @("${slug}_idle_00.png", "${slug}_eat_05.png", "${slug}_walk_03.png")) {
+              $hit = Get-ChildItem 'dist/BookEater' -Recurse -Filter $name | Select-Object -First 1
+              if (-not $hit) { throw "required production sprite missing: $name" }
+            }
           }
           Write-Host "EXE bytes=$((Get-Item 'dist/BookEater/BookEater.exe').Length)"
           Write-Host "bundle MB=$([math]::Round(((Get-ChildItem 'dist/BookEater' -Recurse -File | Measure-Object Length -Sum).Sum / 1MB),1))"
@@ -97,11 +101,11 @@ jobs:
           진화 기록 수 게이트는 0~15 글씨알, 16~30 1차, 31~54 2차, 55+ 최종이며
           모든 단계에서 성향 신호가 불충분하면 억지로 진화하지 않습니다.
           현재 A/B/C 진화 혈통이 단일 성장 체계이며, 세계 주제는 별도 외형 모티프로 누적됩니다.
-          글씨알과 Route A/B/C의 IDLE/EAT/WALK는 교체 가능한 production PNG를 사용합니다.
-          A는 밝은 책 얼굴, B는 검은 잉크 코어 얼굴, C는 랜턴의 따뜻한 발광 코어 얼굴을 유지합니다.
+          글씨알 + Route A/B/C + A1/A2/B1/B2/C1/C2의 IDLE/EAT/WALK는 교체 가능한 production PNG를 사용합니다.
+          A 혈통은 밝은 종이 얼굴, B 혈통은 검은 잉크 코어 얼굴, C 혈통은 랜턴의 따뜻한 발광 코어 얼굴을 유지합니다.
           디자인은 사용자 데이터의 versioned art override로 안전하게 교체할 수 있습니다.
           프레임이 없거나 깨졌으면 패키지 기본 PNG, 그마저 없으면 승인된 혈통 벡터 fallback을 사용합니다.
-          미확정 최종형은 코드가 임의의 외형을 만들지 않고 승인된 2차 실루엣을 유지합니다.
+          미확정 최종 12종은 코드가 임의의 외형을 만들지 않고 가장 가까운 승인 2차 PNG를 상속합니다.
           기록/서재/도감/기억/대사/돌보기/미니게임/첫 만남/자동실행 기능이 포함되어 있습니다.
           정식 설치 프로그램/코드 서명/자동 업데이트/실제 도서 추천 공급자 연결은 아직 개발 중입니다.
 
