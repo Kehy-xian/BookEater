@@ -83,9 +83,28 @@ def _second_growth(stats: Mapping[str, float]) -> tuple[str | None, str]:
     world_diversity = _active_count(stats, WORLD)
     minority_response = min(cognitive, resonant)
 
-    # Route C is a positive, developed mixed pattern—not a catch-all for a weak third axis or an
-    # early near-tie. Requiring a minimum amount of total/mixed evidence matters because tier-1
-    # lineage is irreversible once encountered.
+    if response_total < 3.0:
+        # A world-led C can still emerge below this point, but only from a clearly developed
+        # multi-world signature. Otherwise keep the starter rather than forcing a personality.
+        connected_world = (
+            world_total >= 3.5 and world_diversity >= 2
+            and world_total >= response_total * 0.65
+        )
+        if connected_world:
+            return 'route_c', 'connected-world pattern with no clear response lineage'
+        return None, 'broad route evidence still sparse'
+
+    clear_a = cognitive >= resonant * 1.18 and cognitive - resonant >= 1.0
+    clear_b = resonant >= cognitive * 1.18 and resonant - cognitive >= 1.0
+
+    # Body lineage is primarily the reader's response pattern. A few side reactions or several
+    # topic interests must not steal an otherwise clear A/B body route; those world axes remain
+    # available as independent visual motifs. Route C is evaluated only when A/B is not decisive.
+    if clear_a:
+        return 'route_a', 'cognitive response cluster clearly leads'
+    if clear_b:
+        return 'route_b', 'resonant response cluster clearly leads'
+
     developed_response_diversity = (
         response_total >= 6.0
         and response_diversity >= 3
@@ -101,15 +120,8 @@ def _second_growth(stats: Mapping[str, float]) -> tuple[str | None, str]:
         and world_total >= response_total * 0.65
     )
     if developed_response_diversity or balanced_cross_response or connected_world:
-        return 'route_c', 'developed multi-axis or connected-world pattern'
+        return 'route_c', 'developed multi-axis or connected-world pattern without a clear A/B lead'
 
-    if response_total < 3.0:
-        return None, 'broad route evidence still sparse'
-
-    if cognitive >= resonant * 1.18 and cognitive - resonant >= 1.0:
-        return 'route_a', 'cognitive response cluster leads'
-    if resonant >= cognitive * 1.18 and resonant - cognitive >= 1.0:
-        return 'route_b', 'resonant response cluster leads'
     return None, 'broad route remains tied'
 
 
