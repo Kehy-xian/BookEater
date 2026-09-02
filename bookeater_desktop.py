@@ -4,7 +4,7 @@ import json
 import sys
 
 from bookeater.desktop import run_desktop
-from bookeater.pet_window_v4 import run_pet_v4
+from bookeater.pet_window_v5 import run_pet_v5
 from bookeater.runtime import bootstrap_runtime
 
 
@@ -39,4 +39,4 @@ if __name__ == '__main__':
         raise SystemExit(_smoke())
     if '--full-window' in sys.argv:
         raise SystemExit(run_desktop())
-    raise SystemExit(run_pet_v4())
+    raise SystemExit(run_pet_v5())
