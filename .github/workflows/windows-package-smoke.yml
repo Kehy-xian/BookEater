@@ -104,6 +104,12 @@ jobs:
           if ($proc.ExitCode -ne 0) { throw "packaged smoke exit=$($proc.ExitCode)" }
           if (-not (Test-Path (Join-Path $env:BOOKEATER_DATA_DIR 'bookeater.sqlite3'))) { throw 'packaged SQLite DB was not created' }
           Write-Host 'PACKAGED_WINDOWS_SMOKE_OK'
+      - name: Packaged Windows mutex smoke
+        shell: pwsh
+        run: |
+          $proc = Start-Process -FilePath 'dist/BookEater/BookEater.exe' -ArgumentList '--mutex-smoke' -Wait -PassThru
+          if ($proc.ExitCode -ne 0) { throw "mutex smoke exit=$($proc.ExitCode)" }
+          Write-Host 'PACKAGED_WINDOWS_MUTEX_SMOKE_OK'
       - name: Add first-run note
         shell: pwsh
         run: |
@@ -126,6 +132,7 @@ jobs:
           책 추천 UI는 실제 카탈로그 후보가 연결된 경우에만 작동하며, 취향 정렬은 로컬에서 수행합니다.
           배포판은 public catalog_endpoint.txt로 HTTPS 프록시 URL을 받을 수 있고, Kakao API 키는 서버에만 둡니다.
           설정의 업데이트 확인은 사용자가 눌렀을 때만 HTTPS manifest를 읽고 다운로드 페이지를 안내하며 자동 설치하지 않습니다.
+          일반 Windows 실행은 사용자/데이터 프로필별 named mutex로 중복 실행을 방지합니다.
           기록/서재/도감/기억/대사/돌보기/미니게임/첫 만남/자동실행 기능이 포함되어 있습니다.
           코드 서명/카탈로그 서버 실제 배포/실제 업데이트 manifest 배포는 아직 개발 중입니다.
 
