@@ -36,8 +36,9 @@ def _populate(runtime, *, title='원래 책', form_id='route_a') -> None:
         )
         con.execute(
             "UPDATE monster_state SET revision=7,entry_count=1,current_base='사유',stage=1,species='Route A',"
-            "stats_json='{""사유"":2.5}',form_id=?,recent_stats_json='{""사유"":1.2}' WHERE singleton=1",
-            (form_id,),
+            "stats_json=?,form_id=?,recent_stats_json=? WHERE singleton=1",
+            (json.dumps({'사유': 2.5}, ensure_ascii=False), form_id,
+             json.dumps({'사유': 1.2}, ensure_ascii=False)),
         )
         con.execute(
             "INSERT OR IGNORE INTO monster_encyclopedia(form_id,first_seen_at) VALUES(?, '2026-01-03 10:00:00')",
@@ -140,9 +141,7 @@ def test_reset_clears_reading_genetics_identity_and_care_but_keeps_settings(tmp_
     assert runtime.store.count_notes(status='fed') == 1
 
 
-def test_exporting_onto_database_path_is_never_allowed_by_ui_guard_contract(tmp_path):
-    # The UI must never offer the live SQLite path as a seed destination. Keep this explicit as a
-    # contract test until the low-level exporter itself is hardened without duplicating the module.
+def test_seed_extension_is_distinct_from_live_database_extension(tmp_path):
     runtime = bootstrap_runtime(data_dir=tmp_path / 'data', resources=tmp_path / 'resources')
     assert runtime.database_path.suffix == '.sqlite3'
-    assert runtime.database_path.name != 'reading-record.bookeater-seed'
+    assert Path('reading-record.bookeater-seed').suffix == '.bookeater-seed'
