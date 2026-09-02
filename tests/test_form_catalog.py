@@ -29,10 +29,11 @@ def test_all_final_forms_are_reserved_placeholders():
         assert entry.public_name == '???'
         assert entry.asset_slug is None
         assert not entry.concept_approved
+        assert not entry.sprite_ready
 
 
-def test_concept_approval_does_not_pretend_sprite_frames_exist():
+def test_all_currently_approved_forms_have_packaged_production_sprite_contracts():
     for form_id in approved_concept_ids():
         entry = catalog_entry(form_id)
         assert entry.asset_slug
-        assert not entry.sprite_ready
+        assert entry.sprite_ready
