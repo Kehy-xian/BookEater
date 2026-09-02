@@ -21,6 +21,7 @@ from .storage.sqlite_store import SQLiteGameStore
 from .storage.journal import ReadingJournalStore
 from .storage.milestones import MonsterMilestoneStore
 from .storage.encyclopedia import MonsterEncyclopediaStore
+from .storage.settings import AppSettingsStore
 
 APP_DIR_NAME = 'BookEater'
 DB_FILENAME = 'bookeater.sqlite3'
@@ -117,6 +118,7 @@ class BookEaterRuntime:
     journal: ReadingJournalStore
     milestones: MonsterMilestoneStore
     encyclopedia: MonsterEncyclopediaStore
+    settings: AppSettingsStore
     analyzer: LazyLocalAnalyzer
     feed_service: ReadingFeedService
 
@@ -143,9 +145,8 @@ def bootstrap_runtime(
         journal = ReadingJournalStore(db_path)
         milestones = MonsterMilestoneStore(db_path)
         encyclopedia = MonsterEncyclopediaStore(db_path)
+        settings = AppSettingsStore(db_path)
 
-        # If the app was interrupted after the atomic state commit but before the secondary
-        # encyclopedia write, restore every ancestor from the durable current form on startup.
         for form_id in lineage_path(store.load_state().form_id):
             encyclopedia.unlock(form_id)
     except (OSError, sqlite3.DatabaseError, ValueError) as exc:
@@ -154,5 +155,5 @@ def bootstrap_runtime(
     analyzer = LazyLocalAnalyzer(model_dir)
     service = ReadingFeedService(store, analyzer, encyclopedia=encyclopedia)
     return BookEaterRuntime(
-        data, db_path, model_dir, store, journal, milestones, encyclopedia, analyzer, service
+        data, db_path, model_dir, store, journal, milestones, encyclopedia, settings, analyzer, service
     )
