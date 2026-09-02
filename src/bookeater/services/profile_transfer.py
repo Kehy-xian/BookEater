@@ -12,6 +12,7 @@ from pathlib import Path
 import sqlite3
 
 from .data_transfer import SeedSummary, export_seed, import_seed, reset_reading_and_genetics
+from ..storage.draft import ReadingDraftStore
 
 
 class UnsafeTransferTarget(ValueError):
@@ -55,6 +56,16 @@ def export_profile_seed(database_path: str | Path, destination: str | Path) -> S
     return export_seed(database_path, destination)
 
 
+def _clear_transient_draft(database_path: str | Path) -> None:
+    # A draft belongs to the pre-transfer editing session and must never be silently attached to a
+    # newly planted/reset bookshelf. Failure here must not roll back an already-valid profile swap;
+    # V11 will also overwrite/clear it on the next successful edit/submission.
+    try:
+        ReadingDraftStore(database_path).clear()
+    except sqlite3.DatabaseError:
+        pass
+
+
 def plant_profile_seed(
     database_path: str | Path,
     seed_path: str | Path,
@@ -64,9 +75,13 @@ def plant_profile_seed(
     if str(database_path) != ':memory:' and _same_path(database_path, seed_path):
         raise UnsafeTransferTarget('the live database is not a seed file')
     _install_monotonic_revision_guard(database_path)
-    return import_seed(database_path, seed_path, data_dir=data_dir)
+    result = import_seed(database_path, seed_path, data_dir=data_dir)
+    _clear_transient_draft(database_path)
+    return result
 
 
 def reset_profile(database_path: str | Path, *, data_dir: str | Path) -> Path:
     _install_monotonic_revision_guard(database_path)
-    return reset_reading_and_genetics(database_path, data_dir=data_dir)
+    backup = reset_reading_and_genetics(database_path, data_dir=data_dir)
+    _clear_transient_draft(database_path)
+    return backup
