@@ -14,6 +14,7 @@ from bookeater.pet_art import GEULSSIAL_ANIMATIONS, frame_filename
 from bookeater.sprite_validation import SPRITE_HEIGHT, SPRITE_WIDTH, validate_sprite_pack
 from generate_paperling_sprites import generate_paperling_core_frames
 from generate_route_sprites import generate_route_core_frames
+from generate_subroute_sprites import generate_subroute_core_frames
 
 ARCHIVE_DIR = ROOT / 'resources' / 'sprite_archives'
 SPRITE_DIR = ROOT / 'resources' / 'sprites'
@@ -21,22 +22,19 @@ CORE_STATES = ('idle', 'eat', 'walk')
 ATLAS_COLUMNS = 7
 ATLAS_ROWS = 2
 
-# Approved starter atlas layout, row-major. The visual can be replaced later without changing code
-# as long as the same 7x2 cell contract is preserved.
 PAPERLING_ATLAS_ORDER = (
     ('idle', 0), ('idle', 1), ('idle', 2), ('idle', 3),
     ('eat', 0), ('eat', 1), ('eat', 2),
     ('eat', 3), ('eat', 4), ('eat', 5),
     ('walk', 0), ('walk', 1), ('walk', 2), ('walk', 3),
 )
+SUBROUTE_SLUGS = ('route_a1', 'route_a2', 'route_b1', 'route_b2', 'route_c1', 'route_c2')
 
 
 def _atlas_parts(slug: str) -> tuple[Path, ...]:
     parts = tuple(sorted(ARCHIVE_DIR.glob(f'{slug}_atlas.b85.part*')))
     if not parts:
         return ()
-    # A partially committed atlas must never break a playable build. Only a contiguous set of
-    # part00..partNN is considered installable; otherwise the replaceable baseline is generated.
     indices: list[int] = []
     for part in parts:
         suffix = part.name.rsplit('part', 1)[-1]
@@ -51,7 +49,6 @@ def _atlas_parts(slug: str) -> tuple[Path, ...]:
 def _decode_atlas(parts: tuple[Path, ...]):
     if not parts:
         return None
-    # Pillow is build-only; it is not imported by the shipped desktop application.
     from PIL import Image
 
     encoded = ''.join(p.read_text(encoding='ascii').strip() for p in parts)
@@ -93,8 +90,6 @@ def expand_paperling() -> str:
         if existing:
             _validate('paperling')
             return 'packaged'
-        # Safe replaceable baseline that preserves the approved starter identity. A complete later
-        # atlas automatically takes precedence without any runtime/gameplay change.
         generate_paperling_core_frames(SPRITE_DIR)
         _validate('paperling')
         return 'baseline'
@@ -123,14 +118,12 @@ def expand_paperling() -> str:
     return 'atlas'
 
 
-def ensure_route(slug: str) -> str:
+def _ensure_generated(slug: str, generator) -> str:
     existing = _existing_core_files(slug)
     if existing:
-        # Packaged hand-authored art is allowed to replace the generated baseline, but it must be
-        # complete. A partial committed route pack is a release error rather than something to mix.
         _validate(slug)
         return 'packaged'
-    generate_route_core_frames(SPRITE_DIR, slug)
+    generator(SPRITE_DIR, slug)
     _validate(slug)
     return 'baseline'
 
@@ -138,7 +131,9 @@ def ensure_route(slug: str) -> str:
 def main() -> int:
     sources = {'paperling': expand_paperling()}
     for slug in ('pagedge', 'inknest', 'lantern'):
-        sources[slug] = ensure_route(slug)
+        sources[slug] = _ensure_generated(slug, generate_route_core_frames)
+    for slug in SUBROUTE_SLUGS:
+        sources[slug] = _ensure_generated(slug, generate_subroute_core_frames)
     print('BUNDLED_SPRITES_EXPANDED ' + ' '.join(f'{k}={v}' for k, v in sources.items()))
     return 0
 
