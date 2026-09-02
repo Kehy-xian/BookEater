@@ -70,3 +70,32 @@ def test_final_beta_broadens_signature():
     d = resolve_growth_route(cumulative, 45, recent_stats=recent)
     assert d.form_id == 'route_a1_beta'
     assert d.tier == 3
+
+
+def test_established_route_cannot_flip_to_sibling_route():
+    # This later snapshot would normally look like Route B, but an already encountered A remains A.
+    d = resolve_growth_route(
+        {'사유': 2, '탐구': 2, '감정': 14, '감각': 10},
+        12,
+        current_form='route_a',
+    )
+    assert d.form_id == 'route_a'
+
+
+def test_established_third_growth_only_advances_to_its_own_child():
+    d = resolve_growth_route(
+        {'사유': 2, '탐구': 15, '감정': 20, '감각': 20, '상상': 4},
+        45,
+        current_form='route_a1',
+        recent_stats={'감정': 5, '감각': 5, '상상': 4},
+    )
+    assert d.form_id in {'route_a1_alpha', 'route_a1_beta'}
+
+
+def test_final_form_never_rewrites_after_more_records():
+    d = resolve_growth_route(
+        {'감정': 100, '감각': 100},
+        100,
+        current_form='route_a1_alpha',
+    )
+    assert d.form_id == 'route_a1_alpha'
