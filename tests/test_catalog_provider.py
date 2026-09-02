@@ -9,7 +9,13 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 
-from bookeater.services.catalog import CatalogClient, CatalogResponseError, CatalogUnavailable, configured_catalog_client
+from bookeater.services.catalog import (
+    CatalogClient,
+    CatalogResponseError,
+    CatalogUnavailable,
+    catalog_endpoint_from_env,
+    configured_catalog_client,
+)
 
 
 class FakeResponse:
@@ -79,6 +85,34 @@ def test_invalid_catalog_payload_never_becomes_fake_recommendations():
         client.discovery_pool()
 
 
-def test_unconfigured_catalog_is_cleanly_disabled():
-    assert configured_catalog_client({}) is None
-    assert configured_catalog_client({'BOOKEATER_CATALOG_ENDPOINT': ''}) is None
+def test_unconfigured_catalog_is_cleanly_disabled(tmp_path):
+    assert configured_catalog_client({}, resources=tmp_path) is None
+    assert configured_catalog_client({'BOOKEATER_CATALOG_ENDPOINT': ''}, resources=tmp_path) is None
+
+
+def test_release_can_read_public_endpoint_from_bundled_resource(tmp_path):
+    resources = tmp_path
+    endpoint_file = resources / 'resources' / 'catalog_endpoint.txt'
+    endpoint_file.parent.mkdir(parents=True)
+    endpoint_file.write_text(
+        '# public release endpoint\nhttps://catalog.bookeater.example/\n',
+        encoding='utf-8',
+    )
+
+    assert catalog_endpoint_from_env({}, resources=resources) == 'https://catalog.bookeater.example/'
+    client = configured_catalog_client({}, resources=resources)
+    assert client is not None
+    assert client.endpoint == 'https://catalog.bookeater.example'
+
+
+def test_environment_endpoint_overrides_bundled_release_endpoint(tmp_path):
+    endpoint_file = tmp_path / 'resources' / 'catalog_endpoint.txt'
+    endpoint_file.parent.mkdir(parents=True)
+    endpoint_file.write_text('https://release.example\n', encoding='utf-8')
+
+    client = configured_catalog_client(
+        {'BOOKEATER_CATALOG_ENDPOINT': 'http://localhost:8787'},
+        resources=tmp_path,
+    )
+    assert client is not None
+    assert client.endpoint == 'http://localhost:8787'
