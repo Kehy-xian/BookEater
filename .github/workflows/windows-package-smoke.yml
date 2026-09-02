@@ -14,6 +14,7 @@ on:
       - 'tools/generate_paperling_sprites.py'
       - 'tools/generate_route_sprites.py'
       - 'tools/generate_subroute_sprites.py'
+      - 'tools/generate_extended_sprites.py'
       - 'tools/validate_sprite_pack.py'
       - 'resources/sprites/**'
       - 'resources/sprite_archives/**'
@@ -50,16 +51,16 @@ jobs:
       - name: Expand bundled production sprites
         run: |
           python tools/expand_bundled_sprites.py
-          python tools/validate_sprite_pack.py resources/sprites paperling --states idle,eat,walk
-          python tools/validate_sprite_pack.py resources/sprites pagedge --states idle,eat,walk
-          python tools/validate_sprite_pack.py resources/sprites inknest --states idle,eat,walk
-          python tools/validate_sprite_pack.py resources/sprites lantern --states idle,eat,walk
-          python tools/validate_sprite_pack.py resources/sprites route_a1 --states idle,eat,walk
-          python tools/validate_sprite_pack.py resources/sprites route_a2 --states idle,eat,walk
-          python tools/validate_sprite_pack.py resources/sprites route_b1 --states idle,eat,walk
-          python tools/validate_sprite_pack.py resources/sprites route_b2 --states idle,eat,walk
-          python tools/validate_sprite_pack.py resources/sprites route_c1 --states idle,eat,walk
-          python tools/validate_sprite_pack.py resources/sprites route_c2 --states idle,eat,walk
+          python tools/validate_sprite_pack.py resources/sprites paperling --states idle,eat,walk,read,sleep,talk,spit_memory
+          python tools/validate_sprite_pack.py resources/sprites pagedge --states idle,eat,walk,read,sleep,talk,spit_memory
+          python tools/validate_sprite_pack.py resources/sprites inknest --states idle,eat,walk,read,sleep,talk,spit_memory
+          python tools/validate_sprite_pack.py resources/sprites lantern --states idle,eat,walk,read,sleep,talk,spit_memory
+          python tools/validate_sprite_pack.py resources/sprites route_a1 --states idle,eat,walk,read,sleep,talk,spit_memory
+          python tools/validate_sprite_pack.py resources/sprites route_a2 --states idle,eat,walk,read,sleep,talk,spit_memory
+          python tools/validate_sprite_pack.py resources/sprites route_b1 --states idle,eat,walk,read,sleep,talk,spit_memory
+          python tools/validate_sprite_pack.py resources/sprites route_b2 --states idle,eat,walk,read,sleep,talk,spit_memory
+          python tools/validate_sprite_pack.py resources/sprites route_c1 --states idle,eat,walk,read,sleep,talk,spit_memory
+          python tools/validate_sprite_pack.py resources/sprites route_c2 --states idle,eat,walk,read,sleep,talk,spit_memory
       - name: Fetch bundled local model
         run: python tools/fetch_e5_model.py
       - name: Build one-folder desktop app
@@ -72,11 +73,13 @@ jobs:
           $tok = Get-ChildItem 'dist/BookEater' -Recurse -Filter tokenizer.json | Select-Object -First 1
           $spriteReadme = Get-ChildItem 'dist/BookEater' -Recurse -Filter README.txt | Where-Object { $_.FullName -match 'resources[\\/]sprites' } | Select-Object -First 1
           $requiredSlugs = @('paperling','pagedge','inknest','lantern','route_a1','route_a2','route_b1','route_b2','route_c1','route_c2')
+          $requiredSuffixes = @('idle_00.png','eat_05.png','walk_03.png','read_02.png','sleep_02.png','talk_01.png','spit_memory_03.png')
           if (-not $onnx) { throw 'bundled model.onnx missing' }
           if (-not $tok) { throw 'bundled tokenizer.json missing' }
           if (-not $spriteReadme) { throw 'sprite resource directory missing' }
           foreach ($slug in $requiredSlugs) {
-            foreach ($name in @("${slug}_idle_00.png", "${slug}_eat_05.png", "${slug}_walk_03.png")) {
+            foreach ($suffix in $requiredSuffixes) {
+              $name = "${slug}_${suffix}"
               $hit = Get-ChildItem 'dist/BookEater' -Recurse -Filter $name | Select-Object -First 1
               if (-not $hit) { throw "required production sprite missing: $name" }
             }
@@ -101,7 +104,7 @@ jobs:
           진화 기록 수 게이트는 0~15 글씨알, 16~30 1차, 31~54 2차, 55+ 최종이며
           모든 단계에서 성향 신호가 불충분하면 억지로 진화하지 않습니다.
           현재 A/B/C 진화 혈통이 단일 성장 체계이며, 세계 주제는 별도 외형 모티프로 누적됩니다.
-          글씨알 + Route A/B/C + A1/A2/B1/B2/C1/C2의 IDLE/EAT/WALK는 교체 가능한 production PNG를 사용합니다.
+          글씨알 + Route A/B/C + A1/A2/B1/B2/C1/C2는 IDLE/EAT/WALK/READ/SLEEP/TALK/기억꺼내기 production PNG를 사용합니다.
           A 혈통은 밝은 종이 얼굴, B 혈통은 검은 잉크 코어 얼굴, C 혈통은 랜턴의 따뜻한 발광 코어 얼굴을 유지합니다.
           디자인은 사용자 데이터의 versioned art override로 안전하게 교체할 수 있습니다.
           프레임이 없거나 깨졌으면 패키지 기본 PNG, 그마저 없으면 승인된 혈통 벡터 fallback을 사용합니다.
