@@ -9,7 +9,7 @@ import webbrowser
 
 from .pet_window_v9 import DesktopPetWindowV9
 from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime
-from .services.catalog import CatalogUnavailable, CatalogResponseError, configured_catalog_client
+from .services.catalog import configured_catalog_client
 from .services.recommendations import BookCandidate, rank_real_candidates
 
 
@@ -138,7 +138,6 @@ class DesktopPetWindowV10(DesktopPetWindowV9):
             except queue.Empty:
                 win.after(100, poll)
                 return
-            self._recommendation_busy = False
             if kind == 'ok':
                 render(payload)
                 status_var.set('실재 도서 후보를 로컬 독서 성향으로 정렬했어요.')
@@ -174,8 +173,13 @@ class DesktopPetWindowV10(DesktopPetWindowV9):
                         limit=5,
                     )
                     result_queue.put(('ok', ranked))
-                except (CatalogUnavailable, CatalogResponseError, Exception):
+                except Exception:
                     result_queue.put(('error', None))
+                finally:
+                    # The panel may have been closed before poll() can consume the result. Always
+                    # release the process-wide activity flag so data maintenance never remains
+                    # permanently locked after a closed recommendation window.
+                    self._recommendation_busy = False
 
             threading.Thread(target=work, name='bookeater-recommendations', daemon=True).start()
             win.after(100, poll)
