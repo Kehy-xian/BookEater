@@ -8,7 +8,8 @@ import threading
 
 from .pet_window_v8 import DesktopPetWindowV8
 from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime
-from .services.data_transfer import SeedFormatError, export_seed, import_seed, read_seed, reset_reading_and_genetics
+from .services.data_transfer import SeedFormatError, read_seed
+from .services.profile_transfer import export_profile_seed, plant_profile_seed, reset_profile
 
 
 class DesktopPetWindowV9(DesktopPetWindowV8):
@@ -21,8 +22,6 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
         data_menu.add_command(label='기록 심기', command=self.plant_reading_seed)
         data_menu.add_separator()
         data_menu.add_command(label='기록·유전정보 초기화', command=self.reset_reading_profile)
-        # Insert immediately before Exit; the existing separator remains between normal play and
-        # maintenance actions.
         end = self.menu.index('end')
         self.menu.insert_cascade(end, label='데이터 관리', menu=data_menu)
 
@@ -54,8 +53,6 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
         return True
 
     def _refresh_after_profile_change(self) -> None:
-        # Imported revision numbers may coincidentally equal the currently rendered revision, so
-        # force one identity refresh rather than relying on revision comparison alone.
         self._visual_revision = -1
         self._book_display_to_id.clear()
         if self._sprite_cache is not None:
@@ -82,9 +79,7 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
             return
         destination = Path(chosen)
         try:
-            if destination.resolve() == self.runtime.database_path.resolve():
-                raise ValueError('live database path cannot be used as export destination')
-            summary = export_seed(self.runtime.database_path, destination)
+            summary = export_profile_seed(self.runtime.database_path, destination)
         except Exception:
             messagebox.showerror(
                 '내보내기 실패',
@@ -138,7 +133,7 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
 
         self._data_mutating = True
         try:
-            imported, backup = import_seed(
+            imported, backup = plant_profile_seed(
                 self.runtime.database_path, chosen, data_dir=self.runtime.data_dir,
             )
             self._refresh_after_profile_change()
@@ -184,7 +179,7 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
 
         self._data_mutating = True
         try:
-            backup = reset_reading_and_genetics(
+            backup = reset_profile(
                 self.runtime.database_path, data_dir=self.runtime.data_dir,
             )
             self._refresh_after_profile_change()
