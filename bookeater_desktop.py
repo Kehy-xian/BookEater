@@ -4,7 +4,7 @@ import json
 import sys
 
 from bookeater.desktop import run_desktop
-from bookeater.pet_window_v10 import run_pet_v10
+from bookeater.pet_window_v11 import run_pet_v11
 from bookeater.runtime import bootstrap_runtime
 from bookeater.services.catalog import configured_catalog_client
 from bookeater.services.data_transfer import SEED_FORMAT, SEED_VERSION
@@ -24,6 +24,7 @@ def _smoke() -> int:
         'encyclopedia_ready': runtime.encyclopedia is not None,
         'settings_ready': runtime.settings is not None,
         'care_ready': runtime.care is not None,
+        'drafts_ready': runtime.drafts is not None,
         'seed_transfer_ready': SEED_FORMAT == 'bookeater.reading-seed' and SEED_VERSION >= 1,
         # No endpoint is required for startup. Recommendation UI must remain safely disabled until
         # a real catalog proxy is configured.
@@ -35,7 +36,8 @@ def _smoke() -> int:
     return 0 if all((
         payload['db_ok'], payload['model_loaded'], payload['analysis_is_mapping'],
         payload['journal_ready'], payload['encyclopedia_ready'], payload['settings_ready'],
-        payload['care_ready'], payload['seed_transfer_ready'], payload['catalog_module_ready'],
+        payload['care_ready'], payload['drafts_ready'], payload['seed_transfer_ready'],
+        payload['catalog_module_ready'],
     )) else 3
 
 
@@ -44,4 +46,4 @@ if __name__ == '__main__':
         raise SystemExit(_smoke())
     if '--full-window' in sys.argv:
         raise SystemExit(run_desktop())
-    raise SystemExit(run_pet_v10())
+    raise SystemExit(run_pet_v11())
