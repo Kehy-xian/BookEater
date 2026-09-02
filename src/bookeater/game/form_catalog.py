@@ -2,14 +2,22 @@ from __future__ import annotations
 
 """Player-facing monster catalog metadata.
 
-Concept approval and production sprite readiness are deliberately separate.  The user has
+Concept approval and production sprite readiness are deliberately separate. The user has
 approved the starter, three first-growth route bodies, and two second-growth bodies under each
-route.  Final forms keep stable slots but remain visually undisclosed until later art approval.
+route. Final forms keep stable slots but remain visually undisclosed until later art approval.
 """
 
 from dataclasses import dataclass
 
 from .growth_routes import ALL_GROWTH_FORMS, GROWTH_FORMS
+
+
+# These slugs are generated into the packaged production sprite set and verified by Windows CI.
+# Keeping this explicit prevents a concept-only entry from being advertised as game-ready later.
+_PRODUCTION_SPRITE_SLUGS = frozenset({
+    'paperling', 'pagedge', 'inknest', 'lantern',
+    'route_a1', 'route_a2', 'route_b1', 'route_b2', 'route_c1', 'route_c2',
+})
 
 
 @dataclass(frozen=True)
@@ -22,12 +30,10 @@ class FormCatalogEntry:
 
     @property
     def sprite_ready(self) -> bool:
-        # Concept boards are references, not production sprite sheets.  This becomes true only
-        # when actual per-frame transparent PNGs are added to the packaged asset directory.
-        return False
+        return self.asset_slug in _PRODUCTION_SPRITE_SLUGS
 
 
-# These names are intentionally conservative.  Route/tier art is approved, but final Korean
+# These names are intentionally conservative. Route/tier art is approved, but final Korean
 # species names have not all been chosen yet; do not manufacture permanent names from concept art.
 _APPROVED: dict[str, FormCatalogEntry] = {
     'starter': FormCatalogEntry(
