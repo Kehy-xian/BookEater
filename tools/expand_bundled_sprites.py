@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / 'src'))
 from bookeater.pet_art import GEULSSIAL_ANIMATIONS, frame_filename
 from bookeater.sprite_validation import SPRITE_HEIGHT, SPRITE_WIDTH, validate_sprite_pack
 from generate_paperling_sprites import generate_paperling_core_frames
+from generate_route_sprites import generate_route_core_frames
 
 ARCHIVE_DIR = ROOT / 'resources' / 'sprite_archives'
 SPRITE_DIR = ROOT / 'resources' / 'sprites'
@@ -66,11 +67,21 @@ def _decode_atlas(parts: tuple[Path, ...]):
     return image.convert('RGBA')
 
 
-def _validate_paperling(target: Path) -> None:
-    issues = validate_sprite_pack(target, 'paperling', required_states=CORE_STATES)
+def _issues_for(slug: str, target: Path = SPRITE_DIR):
+    return validate_sprite_pack(target, slug, required_states=CORE_STATES)
+
+
+def _validate(slug: str, target: Path = SPRITE_DIR) -> None:
+    issues = _issues_for(slug, target)
     if issues:
         detail = '; '.join(f'{x.code}:{x.path.name}' for x in issues[:8])
-        raise RuntimeError(f'paperling sprite validation failed: {detail}')
+        raise RuntimeError(f'{slug} sprite validation failed: {detail}')
+
+
+def _existing_core_files(slug: str) -> tuple[Path, ...]:
+    if not SPRITE_DIR.is_dir():
+        return ()
+    return tuple(SPRITE_DIR.glob(f'{slug}_*.png'))
 
 
 def expand_paperling() -> str:
@@ -78,10 +89,14 @@ def expand_paperling() -> str:
     atlas = _decode_atlas(parts)
 
     if atlas is None:
+        existing = _existing_core_files('paperling')
+        if existing:
+            _validate('paperling')
+            return 'packaged'
         # Safe replaceable baseline that preserves the approved starter identity. A complete later
         # atlas automatically takes precedence without any runtime/gameplay change.
         generate_paperling_core_frames(SPRITE_DIR)
-        _validate_paperling(SPRITE_DIR)
+        _validate('paperling')
         return 'baseline'
 
     with tempfile.TemporaryDirectory(prefix='bookeater-sprites-') as temp:
@@ -99,7 +114,7 @@ def expand_paperling() -> str:
             target = staging / frame_filename('paperling', state, frame_index)
             frame.save(target, format='PNG', optimize=True)
 
-        _validate_paperling(staging)
+        _validate('paperling', staging)
         SPRITE_DIR.mkdir(parents=True, exist_ok=True)
         for state in CORE_STATES:
             for i in range(GEULSSIAL_ANIMATIONS[state].frame_count):
@@ -108,9 +123,23 @@ def expand_paperling() -> str:
     return 'atlas'
 
 
+def ensure_route(slug: str) -> str:
+    existing = _existing_core_files(slug)
+    if existing:
+        # Packaged hand-authored art is allowed to replace the generated baseline, but it must be
+        # complete. A partial committed route pack is a release error rather than something to mix.
+        _validate(slug)
+        return 'packaged'
+    generate_route_core_frames(SPRITE_DIR, slug)
+    _validate(slug)
+    return 'baseline'
+
+
 def main() -> int:
-    source = expand_paperling()
-    print(f'BUNDLED_SPRITES_EXPANDED source={source}')
+    sources = {'paperling': expand_paperling()}
+    for slug in ('pagedge', 'inknest', 'lantern'):
+        sources[slug] = ensure_route(slug)
+    print('BUNDLED_SPRITES_EXPANDED ' + ' '.join(f'{k}={v}' for k, v in sources.items()))
     return 0
 
 
