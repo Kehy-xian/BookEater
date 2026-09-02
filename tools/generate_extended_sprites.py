@@ -8,6 +8,10 @@ refreshes these derived states. Hand-authored complete state packs may still rep
 """
 
 from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src'))
 
 from PIL import Image, ImageDraw
 
@@ -44,7 +48,6 @@ def _core_path(root: Path, slug: str, state: str, index: int) -> Path:
 
 
 def _base_idle(root: Path, slug: str, index: int) -> Image.Image:
-    # Cycle through the form's own four idle frames so the derived state keeps its breathing motion.
     path = _core_path(root, slug, 'idle', index % GEULSSIAL_ANIMATIONS['idle'].frame_count)
     if not path.is_file():
         raise FileNotFoundError(f'core idle frame missing: {path.name}')
@@ -55,7 +58,6 @@ def _base_idle(root: Path, slug: str, index: int) -> Image.Image:
 
 
 def _draw_open_book(draw: ImageDraw.ImageDraw, frame: int) -> None:
-    # Foreground book is neutral/readable across all lineages and never changes the monster face.
     lift = (0, -2, -1)[frame % 3]
     y = 132 + lift
     left = [(45, y), (91, y + 9), (91, y + 35), (48, y + 27)]
@@ -66,14 +68,12 @@ def _draw_open_book(draw: ImageDraw.ImageDraw, frame: int) -> None:
     for dy in (10, 16, 22):
         draw.line((57, y + dy, 84, y + dy + 5), fill=(177, 163, 139, 255), width=1)
         draw.line((106, y + dy + 5, 133, y + dy), fill=(177, 163, 139, 255), width=1)
-    # One small red reading marker, consistent with the family bookmark motif.
     draw.polygon([(94, y + 31), (101, y + 35), (97, y + 44), (92, y + 37)], fill=BOOKMARK)
 
 
 def _draw_sleep_marks(draw: ImageDraw.ImageDraw, slug: str, frame: int) -> None:
     x, y = FACE_CENTERS[slug]
     # Do not repaint the face substrate: that could erase B2 bars or future design details.
-    # A small eyelid accent plus Zs is layered safely over any visual revision.
     eye_color = WARM if slug.startswith(('inknest', 'lantern', 'route_b', 'route_c')) else INK
     offset = (0, 1, 0)[frame % 3]
     draw.line((x - 18, y - 5 + offset, x - 8, y - 5 + offset), fill=eye_color, width=2)
@@ -96,7 +96,6 @@ def _draw_talk_mark(draw: ImageDraw.ImageDraw, slug: str, frame: int) -> None:
 
 def _draw_memory_card(draw: ImageDraw.ImageDraw, slug: str, frame: int) -> None:
     x, y = FACE_CENTERS[slug]
-    # Card moves out of the mouth and upward/right across four frames.
     dx = (0, 13, 27, 43)[frame]
     dy = (8, 1, -8, -18)[frame]
     cx, cy = x + dx, y + dy
