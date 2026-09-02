@@ -37,7 +37,7 @@ def test_final_route_can_broaden_when_recent_signature_changes():
     cumulative = {'사유': 24, '탐구': 7, '감정': 3, '감각': 2, '사회': 4}
     recent = {'감정': 4, '감각': 3, '상상': 3, '자연': 2, '사유': 1}
     d = resolve_growth_route(
-        cumulative, 45, recent_stats=recent, current_form='route_a1'
+        cumulative, 60, recent_stats=recent, current_form='route_a1'
     )
     assert d.form_id == 'route_a1_beta'
 
@@ -46,6 +46,6 @@ def test_final_route_deepens_when_recent_signature_stays_focused():
     cumulative = {'사유': 24, '탐구': 7, '감정': 3, '감각': 2, '사회': 4}
     recent = {'사유': 7, '탐구': 2, '사회': 1}
     d = resolve_growth_route(
-        cumulative, 45, recent_stats=recent, current_form='route_a1'
+        cumulative, 60, recent_stats=recent, current_form='route_a1'
     )
     assert d.form_id == 'route_a1_alpha'
