@@ -8,7 +8,7 @@ being forced down a branch. Once a branch has been encountered, lineage is perma
 records may shape descendants but cannot rewrite a monster into a sibling route.
 
 Tier meaning:
-- tier 0 starter: fewer than 5 meaningful records, or branch evidence still too weak
+- tier 0 starter: fewer than 5 counted reading records, or branch evidence still too weak
 - tier 1 A/B/C: broad reading-response pattern
 - tier 2: finer response/world pattern within the chosen broad route
 - tier 3 alpha/beta: deepening vs broadening trajectory using recent records when available
@@ -81,17 +81,27 @@ def _second_growth(stats: Mapping[str, float]) -> tuple[str | None, str]:
     world_total = _sum(stats, WORLD)
     response_diversity = _active_count(stats, REACTION)
     world_diversity = _active_count(stats, WORLD)
+    minority_response = min(cognitive, resonant)
 
+    # Route C is a positive, developed mixed pattern—not a catch-all for a weak third axis or an
+    # early near-tie. Requiring a minimum amount of total/mixed evidence matters because tier-1
+    # lineage is irreversible once encountered.
+    developed_response_diversity = (
+        response_total >= 6.0
+        and response_diversity >= 3
+        and minority_response >= 1.5
+    )
     balanced_cross_response = (
-        cognitive >= 2.5 and resonant >= 2.5
+        response_total >= 6.0
+        and cognitive >= 2.5 and resonant >= 2.5
         and max(cognitive, resonant) <= min(cognitive, resonant) * 1.55
     )
     connected_world = (
         world_total >= 3.5 and world_diversity >= 2
         and world_total >= response_total * 0.65
     )
-    if response_diversity >= 3 or balanced_cross_response or connected_world:
-        return 'route_c', 'multi-axis or connected-world pattern'
+    if developed_response_diversity or balanced_cross_response or connected_world:
+        return 'route_c', 'developed multi-axis or connected-world pattern'
 
     if response_total < 3.0:
         return None, 'broad route evidence still sparse'
@@ -206,7 +216,6 @@ def resolve_growth_route(
     target_stage = _stage(entry_count)
     current = _safe_current(current_form)
 
-    # Never regress or rewrite a form just because a later cumulative snapshot becomes noisy.
     if current.tier >= target_stage:
         return GrowthRouteDecision(
             current.form_id, current.tier, False,
@@ -214,7 +223,7 @@ def resolve_growth_route(
         )
 
     if target_stage == 0:
-        return GrowthRouteDecision('starter', 0, False, 'not enough meaningful records yet')
+        return GrowthRouteDecision('starter', 0, False, 'not enough counted reading records yet')
 
     path = lineage_path(current.form_id)
     if current.tier >= 1:
