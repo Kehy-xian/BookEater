@@ -4,7 +4,8 @@ from __future__ import annotations
 
 The resolver consumes only aggregate hidden trait weights. It is deliberately conservative:
 when the evidence is too weak or too tied, the monster waits at its current form instead of
-being forced down a branch.
+being forced down a branch. Once a branch has been encountered, lineage is permanent: later
+records may shape descendants but cannot rewrite a monster into a sibling route.
 
 Tier meaning:
 - tier 0 starter: fewer than 5 meaningful records, or branch evidence still too weak
@@ -16,7 +17,7 @@ Tier meaning:
 from dataclasses import dataclass
 from typing import Mapping
 
-from .growth_routes import get_growth_form
+from .growth_routes import get_growth_form, lineage_path
 
 REACTION = ('사유', '탐구', '감정', '감각')
 WORLD = ('상상', '모험', '자연', '사회', '어둠')
@@ -81,7 +82,6 @@ def _second_growth(stats: Mapping[str, float]) -> tuple[str | None, str]:
     response_diversity = _active_count(stats, REACTION)
     world_diversity = _active_count(stats, WORLD)
 
-    # Positive C criteria: actual cross-response complexity or strong multi-world connection.
     balanced_cross_response = (
         cognitive >= 2.5 and resonant >= 2.5
         and max(cognitive, resonant) <= min(cognitive, resonant) * 1.55
@@ -127,7 +127,6 @@ def _third_growth(route: str, stats: Mapping[str, float]) -> tuple[str | None, s
     if route == 'route_b':
         return _choose_pair(stats, '감정', '감각', 'route_b1', 'route_b2')
 
-    # Route C is not a leftovers bucket. It splits by what makes the profile complex.
     response_diversity = _active_count(stats, REACTION)
     world_diversity = _active_count(stats, WORLD)
     response_total = _sum(stats, REACTION)
@@ -147,7 +146,11 @@ def _third_growth(route: str, stats: Mapping[str, float]) -> tuple[str | None, s
     return None, 'C sub-route remains tied'
 
 
-def _final_growth(parent_form: str, cumulative: Mapping[str, float], recent: Mapping[str, float] | None) -> tuple[str | None, str]:
+def _final_growth(
+    parent_form: str,
+    cumulative: Mapping[str, float],
+    recent: Mapping[str, float] | None,
+) -> tuple[str | None, str]:
     sample = recent if recent is not None else cumulative
     if _sum(sample, ALL_AXES) < 2.0:
         return None, 'recent trajectory evidence still sparse'
@@ -159,14 +162,12 @@ def _final_growth(parent_form: str, cumulative: Mapping[str, float], recent: Map
     cumulative_dom = _dominant_axis(cumulative)
     recent_dom = _dominant_axis(sample)
 
-    # alpha = deepening: recent records reinforce a stable dominant direction.
     deepening = (
         recent_dom is not None
         and recent_dom == cumulative_dom
         and recent_focus >= max(0.30, cumulative_focus * 0.90)
         and recent_active <= max(4, cumulative_active)
     )
-    # beta = broadening: dominant direction changes or more axes become meaningfully active.
     broadening = (
         recent_dom is not None
         and (
@@ -180,12 +181,18 @@ def _final_growth(parent_form: str, cumulative: Mapping[str, float], recent: Map
         return f'{parent_form}_alpha', 'recent records deepen the established signature'
     if broadening and not deepening:
         return f'{parent_form}_beta', 'recent records broaden the established signature'
-    # If both/neither fire, use a stable concentration fallback rather than random branching.
     return (
         f'{parent_form}_alpha', 'trajectory concentration fallback: deepening'
     ) if recent_focus >= 0.34 else (
         f'{parent_form}_beta', 'trajectory concentration fallback: broadening'
     )
+
+
+def _safe_current(form_id: str):
+    try:
+        return get_growth_form(form_id)
+    except ValueError:
+        return get_growth_form('starter')
 
 
 def resolve_growth_route(
@@ -195,24 +202,48 @@ def resolve_growth_route(
     recent_stats: Mapping[str, float] | None = None,
     current_form: str = 'starter',
 ) -> GrowthRouteDecision:
-    """Resolve the highest supported form without forcing weak/tied evidence."""
+    """Resolve the highest supported descendant without rewriting an established lineage."""
     target_stage = _stage(entry_count)
+    current = _safe_current(current_form)
+
+    # Never regress or rewrite a form just because a later cumulative snapshot becomes noisy.
+    if current.tier >= target_stage:
+        return GrowthRouteDecision(
+            current.form_id, current.tier, False,
+            'existing lineage retained at current growth tier',
+        )
+
     if target_stage == 0:
         return GrowthRouteDecision('starter', 0, False, 'not enough meaningful records yet')
 
-    route, why = _second_growth(cumulative_stats)
-    if route is None:
-        current = get_growth_form(current_form)
-        keep = current.form_id if current.tier <= 0 else current.form_id
-        return GrowthRouteDecision(keep, current.tier, True, why)
+    path = lineage_path(current.form_id)
+    if current.tier >= 1:
+        route = path[1]
+        why = 'established broad route retained'
+    else:
+        route, why = _second_growth(cumulative_stats)
+        if route is None:
+            return GrowthRouteDecision('starter', 0, True, why)
+
     if target_stage == 1:
         return GrowthRouteDecision(route, 1, False, why)
 
-    third, why3 = _third_growth(route, cumulative_stats)
-    if third is None:
-        return GrowthRouteDecision(route, 1, True, why3)
+    if current.tier >= 2:
+        third = path[2]
+        why3 = 'established sub-route retained'
+    else:
+        third, why3 = _third_growth(route, cumulative_stats)
+        if third is None:
+            return GrowthRouteDecision(route, 1, True, why3)
+
     if target_stage == 2:
         return GrowthRouteDecision(third, 2, False, why3)
+
+    if current.tier >= 3:
+        return GrowthRouteDecision(
+            current.form_id, current.tier, False,
+            'final lineage retained',
+        )
 
     final, why4 = _final_growth(third, cumulative_stats, recent_stats)
     if final is None:
