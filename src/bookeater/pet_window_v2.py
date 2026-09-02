@@ -7,10 +7,14 @@ UI plus a more grounded idle breathing motion. Production PNG sprites can replac
 later without changing the panels or reading pipeline.
 """
 
+from .game.encyclopedia_view import build_encyclopedia_rows
 from .game.form_catalog import catalog_entry
 from .game.growth_routes import ALL_GROWTH_FORMS
 from .pet_window import DesktopPetWindow, _INTERRUPT_STATES
 from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime
+
+
+_STAGE_LABELS = {0: '기본', 1: '1차', 2: '2차', 3: '최종'}
 
 
 class DesktopPetWindowV2(DesktopPetWindow):
@@ -20,50 +24,52 @@ class DesktopPetWindowV2(DesktopPetWindow):
         self.menu.insert_command(2, label='몬스터 도감', command=self.open_encyclopedia_panel)
 
     def open_encyclopedia_panel(self) -> None:
-        tk, ttk = self.tk, self.ttk
+        ttk = self.ttk
         encountered = self.runtime.encyclopedia.encountered_ids()
-        win = self._new_panel('몬스터 도감', '650x530')
+        rows = build_encyclopedia_rows(encountered)
+        win = self._new_panel('몬스터 도감', '700x570')
         body = ttk.Frame(win, padding=14)
         body.pack(fill='both', expand=True)
 
         ttk.Label(body, text='몬스터 도감', font=('', 18, 'bold')).pack(anchor='w')
         ttk.Label(
             body,
-            text=f'만난 모습 {len(encountered)} / {len(ALL_GROWTH_FORMS)}',
+            text=f'만난 모습 {len(encountered)} / {len(ALL_GROWTH_FORMS)} · 가지를 펼치면 이어지는 혈통을 볼 수 있어요.',
         ).pack(anchor='w', pady=(2, 10))
 
-        columns = ('stage', 'name', 'status')
-        tree = ttk.Treeview(body, columns=columns, show='headings', height=13, selectmode='browse')
-        tree.heading('stage', text='단계')
-        tree.heading('name', text='모습')
+        tree_wrap = ttk.Frame(body)
+        tree_wrap.pack(fill='both', expand=True)
+        columns = ('stage', 'status')
+        tree = ttk.Treeview(tree_wrap, columns=columns, show='tree headings', height=15, selectmode='browse')
+        tree.heading('#0', text='모습 / 혈통')
+        tree.heading('stage', text='성장')
         tree.heading('status', text='상태')
+        tree.column('#0', width=300, anchor='w')
         tree.column('stage', width=70, anchor='center', stretch=False)
-        tree.column('name', width=230, anchor='w')
-        tree.column('status', width=180, anchor='w')
-        tree.pack(fill='both', expand=True)
+        tree.column('status', width=210, anchor='w')
+        scroll = ttk.Scrollbar(tree_wrap, orient='vertical', command=tree.yview)
+        tree.configure(yscrollcommand=scroll.set)
+        tree.pack(side='left', fill='both', expand=True)
+        scroll.pack(side='right', fill='y')
 
-        item_to_form: dict[str, str] = {}
-        for form in ALL_GROWTH_FORMS:
-            entry = catalog_entry(form.form_id)
-            found = form.form_id in encountered
-            if found:
-                name = entry.public_name
-                if entry.sprite_ready:
-                    status = '발견 · 게임 아트 준비됨'
-                elif entry.concept_approved:
-                    status = '발견 · 스프라이트 준비중'
-                else:
-                    status = '발견 · 이미지 추후 업데이트'
-            else:
-                name = '???'
-                status = '미발견' if entry.concept_approved else '미발견 · 빈 슬롯'
-            iid = tree.insert('', 'end', values=(f'{form.tier + 1}단계', name, status))
-            item_to_form[iid] = form.form_id
+        item_to_row = {}
+        form_to_item: dict[str, str] = {}
+        for row in rows:
+            parent_iid = form_to_item.get(row.parent_id, '') if row.parent_id else ''
+            iid = tree.insert(
+                parent_iid,
+                'end',
+                text=row.name,
+                values=(_STAGE_LABELS.get(row.tier, str(row.tier)), row.status),
+                open=True,
+            )
+            form_to_item[row.form_id] = iid
+            item_to_row[iid] = row
 
         detail = ttk.Label(
             body,
             text='항목을 선택하면 이 친구에 대한 짧은 힌트를 볼 수 있어요.',
-            wraplength=600,
+            wraplength=650,
             justify='left',
         )
         detail.pack(fill='x', pady=(10, 0))
@@ -72,23 +78,23 @@ class DesktopPetWindowV2(DesktopPetWindow):
             selected = tree.selection()
             if not selected:
                 return
-            form_id = item_to_form[selected[0]]
-            entry = catalog_entry(form_id)
-            if form_id not in encountered:
-                detail.configure(text='아직 만나지 못한 몬스터다. 어떤 기록을 먹으면 만날 수 있을지는 비밀이다.')
+            row = item_to_row[selected[0]]
+            if not row.found:
+                detail.configure(text=row.hint)
                 return
-            if entry.sprite_ready:
+            if row.sprite_ready:
                 art_note = '현재 게임에서 사용하는 아트가 준비되어 있다. 디자인은 이후에도 교체될 수 있다.'
-            elif entry.concept_approved:
+            elif row.concept_approved:
                 art_note = '현재 콘셉트는 확정됐고 실제 게임용 스프라이트를 준비 중이다.'
             else:
                 art_note = '이 진화형의 이미지 자리는 확보되어 있으며 아트는 추후 업데이트된다.'
-            detail.configure(text=f'{entry.hint}\n{art_note}')
+            detail.configure(text=f'{row.hint}\n{art_note}')
 
         tree.bind('<<TreeviewSelect>>', show_detail)
-        children = tree.get_children()
-        if children:
-            tree.selection_set(children[0])
+        starter_iid = form_to_item.get('starter')
+        if starter_iid:
+            tree.selection_set(starter_iid)
+            tree.see(starter_iid)
             show_detail()
 
     def open_profile_panel(self) -> None:
@@ -262,4 +268,3 @@ def run_pet_v2(*, runtime_factory=bootstrap_runtime) -> int:
         root.destroy()
         return 2
     DesktopPetWindowV2(runtime).run()
-    return 0
