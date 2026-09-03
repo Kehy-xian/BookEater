@@ -95,6 +95,8 @@ reliable checklist by itself.
   redaction preview, upload queue/retry and deletion request.
 - Authenticode signing and signed-manifest verification beyond HTTPS plus exact SHA-256.
 - Multi-monitor-specific work-area handling; current roaming uses the primary Windows work area.
+- Post-core administrator operations page and natural-language change workflow. The approved scope,
+  privacy boundary and start conditions are recorded in `POST_CORE_ADMIN_OPERATIONS_BACKLOG.md`.
 
 ## Highest-priority refinement/bug risks
 
@@ -107,9 +109,10 @@ reliable checklist by itself.
 
 ## Next order
 
-1. Run the full GitHub Windows package/mutex and installer version-upgrade regression for beta.4.
-2. Redeploy the Cloudflare Worker so live ISBN-vs-keyword query routing matches this branch.
-3. Publish the beta.4 Windows prerelease only after both regressions and live Worker checks pass.
-4. Perform a manual Windows UI pass for animation timing, tray, scale, small panels and slow network.
-5. Add explicit local correction/odd-result UX before enabling any improvement-data upload.
-6. Complete multi-monitor/manual Windows playtests.
+1. Perform a manual Windows UI pass for beta.4 animation timing, tray, scale, small panels and slow
+   network. Automated core, package/mutex, installer upgrade, live Worker and release checks passed.
+2. Finalize the base/evolution art and major action animation sets.
+3. Add explicit local correction/odd-result UX before enabling any improvement-data upload.
+4. Complete multi-monitor/manual Windows playtests.
+5. After the core implementation and consent lifecycle are stable, begin the administrator
+   operations backlog in `POST_CORE_ADMIN_OPERATIONS_BACKLOG.md`.
