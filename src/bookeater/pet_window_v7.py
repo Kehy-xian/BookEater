@@ -13,6 +13,7 @@ from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime
 
 class DesktopPetWindowV7(DesktopPetWindowV6):
     def __init__(self, runtime: BookEaterRuntime):
+        self._care_pose_serial = 0
         super().__init__(runtime)
         # feed, library, encyclopedia, profile, memory, settings, separator, exit
         self.menu.insert_command(5, label='돌보기', command=self.open_care_panel)
@@ -65,14 +66,17 @@ class DesktopPetWindowV7(DesktopPetWindowV6):
 
         def care(action: str, text: str) -> None:
             state = self.runtime.care.apply(action)
+            self._roam.set_bond(state.bond)
             refresh(state)
             msg.set(text)
+            self._care_pose_serial += 1
+            serial = self._care_pose_serial
+            self._pet_state = action
+            duration = {'snack': 700, 'play': 1200, 'wash': 1200}[action]
             if action == 'snack':
-                self._pet_state = 'eat'
-                self._eat_frames = 5
-            elif action == 'play':
-                self._pet_state = 'talk'
-                self.root.after(900, self._care_pose_done)
+                self.root.after(duration, lambda: self._show_delicious_pose(serial))
+            else:
+                self.root.after(duration, lambda: self._care_pose_done(serial))
 
         buttons = ttk.Frame(body)
         buttons.pack(fill='x', pady=(14, 6))
@@ -83,8 +87,16 @@ class DesktopPetWindowV7(DesktopPetWindowV6):
         ttk.Label(body, textvariable=msg, wraplength=420).pack(anchor='w', pady=(8, 0))
         refresh()
 
-    def _care_pose_done(self) -> None:
-        if self._pet_state == 'talk':
+    def _show_delicious_pose(self, serial: int) -> None:
+        if serial != self._care_pose_serial or self._pet_state != 'snack':
+            return
+        self._pet_state = 'delicious'
+        self.root.after(850, lambda: self._care_pose_done(serial))
+
+    def _care_pose_done(self, serial: int | None = None) -> None:
+        if serial is not None and serial != self._care_pose_serial:
+            return
+        if self._pet_state in {'snack', 'delicious', 'play', 'wash'}:
             self._pet_state = 'idle'
 
     def open_letter_game(self) -> None:

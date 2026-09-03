@@ -186,6 +186,8 @@ class CatalogClient:
                     detail_url=_safe_url(raw_book.get('detail_url') or raw_book.get('link')),
                     cover_url=_safe_url(raw_book.get('cover_url')),
                     source=str(raw_book.get('source') or 'catalog').strip() or 'catalog',
+                    isbn13=str(raw_book.get('isbn13') or '').strip() or None,
+                    publisher=str(raw_book.get('publisher') or '').strip() or None,
                 ))
             except ValueError:
                 continue

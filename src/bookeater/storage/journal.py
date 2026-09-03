@@ -222,6 +222,42 @@ class ReadingJournalStore:
         finally:
             con.close()
 
+    def update_book(self, book_id: str, *, title: str, author: str = '') -> StoredBook:
+        title = str(title or '').strip()
+        author = str(author or '').strip()
+        if not title:
+            raise ValueError('title must not be blank')
+        con = self._connect()
+        try:
+            cur = con.execute(
+                'UPDATE books SET title=?,author=?,updated_at=CURRENT_TIMESTAMP WHERE book_id=?',
+                (title, author, str(book_id)),
+            )
+            if cur.rowcount != 1:
+                raise KeyError(book_id)
+            con.commit()
+        finally:
+            con.close()
+        book = self.get_book(book_id)
+        if book is None:
+            raise RuntimeError('book update failed')
+        return book
+
+    def delete_book_metadata(self, book_id: str) -> None:
+        """Delete only bookshelf metadata; notes and established growth remain intact.
+
+        The schema deliberately uses ON DELETE SET NULL for reading contexts. Removing a title can
+        therefore never erase a user's writing or retroactively rewrite their monster genetics.
+        """
+        con = self._connect()
+        try:
+            cur = con.execute('DELETE FROM books WHERE book_id=?', (str(book_id),))
+            if cur.rowcount != 1:
+                raise KeyError(book_id)
+            con.commit()
+        finally:
+            con.close()
+
     def attach_note(
         self,
         game_store: 'SQLiteGameStore',

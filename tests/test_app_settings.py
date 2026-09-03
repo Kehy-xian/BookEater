@@ -24,3 +24,12 @@ def test_startup_command_quotes_paths_with_spaces():
     assert startup_command(r'C:\Program Files\BookEater\BookEater.exe') == (
         '"C:\\Program Files\\BookEater\\BookEater.exe"'
     )
+
+
+def test_settings_clear_restores_missing_key_defaults(tmp_path):
+    settings = AppSettingsStore(tmp_path / 'game.sqlite3')
+    settings.set_bool('intro_drop_enabled', False)
+    settings.set_bool('autostart_enabled', True)
+    settings.clear()
+    assert settings.get_bool('intro_drop_enabled', True) is True
+    assert settings.get('autostart_enabled') is None

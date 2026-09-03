@@ -80,8 +80,15 @@ def plant_profile_seed(
     return result
 
 
-def reset_profile(database_path: str | Path, *, data_dir: str | Path) -> Path:
+def reset_profile(
+    database_path: str | Path,
+    *,
+    data_dir: str | Path,
+    reset_settings: bool = False,
+) -> Path:
     _install_monotonic_revision_guard(database_path)
-    backup = reset_reading_and_genetics(database_path, data_dir=data_dir)
+    backup = reset_reading_and_genetics(
+        database_path, data_dir=data_dir, reset_settings=reset_settings,
+    )
     _clear_transient_draft(database_path)
     return backup

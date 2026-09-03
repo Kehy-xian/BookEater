@@ -114,7 +114,7 @@ class DesktopApp:
 
         progress_row = ttk.Frame(book_frame)
         progress_row.pack(fill='x', pady=(8, 0))
-        ttk.Label(progress_row, text='이번에 읽은 곳').pack(side='left')
+        ttk.Label(progress_row, text='이번에 읽은 범위').pack(side='left')
         self.progress_var = tk.StringVar(value='')
         self.progress_entry = ttk.Entry(progress_row, textvariable=self.progress_var)
         self.progress_entry.pack(side='left', fill='x', expand=True, padx=(8, 0))

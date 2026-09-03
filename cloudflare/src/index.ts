@@ -126,10 +126,11 @@ function normalizedPayload(parsed:any, meta:Json):Json {
 async function searchBooks(url: URL, env: Env): Promise<Response> {
   const q=normalizeQuery(url.searchParams.get("q")||""); const page=Number(url.searchParams.get("page")||"1"); const max=clampCount(url.searchParams.get("max_results"));
   if(!q||q.length>200||!Number.isInteger(page)||page<1||page>50)return json({error:"invalid_query"},400);
-  const cacheReq=cachedRequest(url.origin,"search",{q:q.toLocaleLowerCase("ko-KR"),page:String(page),max:String(max)});
+  const compact=q.replace(/[\s-]/g,""); const queryType=/^(?:\d{10}|\d{13})$/.test(compact)?"ISBN":"Keyword";
+  const cacheReq=cachedRequest(url.origin,"search",{q:q.toLocaleLowerCase("ko-KR"),queryType,page:String(page),max:String(max)});
   const hit=await cachedJson(cacheReq); if(hit)return hit; if(!env.ALADIN_TTB_KEY)return json({error:"aladin_not_configured"},503);
   const a=new URL("https://www.aladin.co.kr/ttb/api/ItemSearch.aspx"); commonAladinParams(a,env,max,page);
-  a.searchParams.set("Query",q);a.searchParams.set("QueryType","Title"); const parsed=await aladinJson(a);
+  a.searchParams.set("Query",queryType==="ISBN"?compact:q);a.searchParams.set("QueryType",queryType); const parsed=await aladinJson(a);
   if(!parsed)return json({error:"book_provider_error"},502);
   const miss=json(normalizedPayload(parsed,{query:q}),200,{"cache-control":"public, max-age=21600","x-bookeater-cache":"miss"});
   await caches.default.put(cacheReq,miss.clone()); return miss;

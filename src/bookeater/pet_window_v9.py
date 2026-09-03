@@ -10,6 +10,7 @@ from .pet_window_v8 import DesktopPetWindowV8
 from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime
 from .services.data_transfer import SeedFormatError, read_seed
 from .services.profile_transfer import export_profile_seed, plant_profile_seed, reset_profile
+from .services.windows_autostart import can_enable_autostart, is_autostart_enabled, set_autostart
 
 
 class DesktopPetWindowV9(DesktopPetWindowV8):
@@ -19,9 +20,9 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
         super().__init__(runtime)
         data_menu = self.tk.Menu(self.menu, tearoff=0)
         data_menu.add_command(label='기록 내보내기', command=self.export_reading_seed)
-        data_menu.add_command(label='기록 심기', command=self.plant_reading_seed)
+        data_menu.add_command(label='기록 읽기', command=self.plant_reading_seed)
         data_menu.add_separator()
-        data_menu.add_command(label='기록·유전정보 초기화', command=self.reset_reading_profile)
+        data_menu.add_command(label='전체 초기화', command=self.reset_reading_profile)
         end = self.menu.index('end')
         self.menu.insert_cascade(end, label='데이터 관리', menu=data_menu)
 
@@ -64,7 +65,7 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
             messagebox.showinfo(
                 '미제출 초안이 있어요',
                 '아직 몬스터에게 먹이지 않은 기록 초안이 남아 있어요.\n'
-                '기록 심기나 초기화 전에 초안을 먼저 먹이거나 비워 주세요.',
+                '기록 읽기나 전체 초기화 전에 초안을 먼저 먹이거나 비워 주세요.',
                 parent=self.root,
             )
             return False
@@ -140,9 +141,9 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
             return
 
         ok = messagebox.askyesno(
-            '기록 심기',
+            '기록 읽기',
             f'책 {summary.book_count}권 · 기록 {summary.note_count}개가 들어 있는 기록을 심을까요?\n\n'
-            '현재 독서기록과 몬스터의 유전·성장 상태는 이 파일의 내용으로 교체됩니다.\n'
+            '현재 책·독서기록·유전정보·성장·도감·친밀도는 이 파일의 내용으로 교체됩니다.\n'
             '자동실행과 화면 설정, 교체 아트는 그대로 유지됩니다.\n'
             '교체 직전에 현재 상태를 자동 백업합니다.',
             parent=self.root,
@@ -167,7 +168,7 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
             self._data_mutating = False
 
         messagebox.showinfo(
-            '기록 심기 완료',
+            '기록 읽기 완료',
             f'책 {imported.book_count}권 · 기록 {imported.note_count}개와 성장 정보를 심었어요.\n'
             f'교체 전 상태 백업: {backup}',
             parent=self.root,
@@ -179,10 +180,11 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
         from tkinter import messagebox, simpledialog
 
         confirmed = messagebox.askyesno(
-            '기록·유전정보 초기화',
+            '전체 초기화',
             '독서기록, 책장, 성장 유전정보, 도감, 만난 날짜와 친밀도를 새 글씨알 상태로 초기화합니다.\n'
-            '자동실행·화면 설정·교체 아트는 지우지 않습니다.\n\n'
-            '실행 직전에 복구용 기록 파일을 자동으로 만듭니다. 계속할까요?',
+            '시작 애니메이션 등 앱 설정도 기본값으로 되돌리고 Windows 자동 실행을 끕니다.\n'
+            '자동 백업과 사용자가 준비한 교체 아트 파일은 지우지 않습니다.\n\n'
+            '실행 직전에 독서기록과 몬스터 상태 복구용 파일을 자동으로 만듭니다. 계속할까요?',
             parent=self.root,
         )
         if not confirmed:
@@ -197,12 +199,21 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
             return
 
         self._data_mutating = True
+        autostart_was_enabled = can_enable_autostart() and is_autostart_enabled()
         try:
+            if autostart_was_enabled:
+                set_autostart(False)
             backup = reset_profile(
-                self.runtime.database_path, data_dir=self.runtime.data_dir,
+                self.runtime.database_path, data_dir=self.runtime.data_dir, reset_settings=True,
             )
+            self._set_pet_scale(1.0, persist=False)
             self._refresh_after_profile_change()
         except Exception:
+            if autostart_was_enabled:
+                try:
+                    set_autostart(True)
+                except Exception:
+                    pass
             messagebox.showerror(
                 '초기화 실패',
                 '초기화 중 문제가 생겼어요. 변경 작업은 취소되었으며 기존 기록을 유지합니다.',

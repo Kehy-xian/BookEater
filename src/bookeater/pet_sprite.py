@@ -136,31 +136,43 @@ class TkSpriteCache:
         self.tk = tk_module
         self.resource_root = Path(resource_root)
         self.override_root = Path(override_root) if override_root is not None else _runtime_override_root()
-        self._cache: dict[tuple[str, str], tuple[Any, ...] | None] = {}
+        self._cache: dict[tuple[str, str, float], tuple[Any, ...] | None] = {}
 
-    def _try_load(self, paths: tuple[Path, ...]) -> tuple[Any, ...] | None:
+    def _try_load(self, paths: tuple[Path, ...], scale: float = 1.0) -> tuple[Any, ...] | None:
         if not paths:
             return None
         try:
+            if scale != 1.0:
+                from PIL import Image, ImageTk
+                images = []
+                for path in paths:
+                    with Image.open(path) as source:
+                        size = (
+                            max(1, round(source.width * scale)),
+                            max(1, round(source.height * scale)),
+                        )
+                        images.append(ImageTk.PhotoImage(source.resize(size, Image.Resampling.LANCZOS)))
+                return tuple(images)
             return tuple(self.tk.PhotoImage(file=str(path)) for path in paths)
         except Exception:
             return None
 
-    def frames(self, form_id: str, state: str) -> tuple[Any, ...] | None:
-        key = (str(form_id), str(state))
+    def frames(self, form_id: str, state: str, *, scale: float = 1.0) -> tuple[Any, ...] | None:
+        scale = max(0.5, min(1.0, float(scale)))
+        key = (str(form_id), str(state), scale)
         if key in self._cache:
             return self._cache[key]
 
         # A complete local override is preferred, but a corrupt PNG must not suppress a healthy
         # packaged animation. Sources are attempted atomically and never mixed frame-by-frame.
         if override_animation_available(self.override_root, form_id, state):
-            images = self._try_load(override_frame_paths(self.override_root, form_id, state))
+            images = self._try_load(override_frame_paths(self.override_root, form_id, state), scale)
             if images is not None:
                 self._cache[key] = images
                 return images
 
         if production_animation_available(self.resource_root, form_id, state):
-            images = self._try_load(production_frame_paths(self.resource_root, form_id, state))
+            images = self._try_load(production_frame_paths(self.resource_root, form_id, state), scale)
             if images is not None:
                 self._cache[key] = images
                 return images

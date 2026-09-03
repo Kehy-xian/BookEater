@@ -334,8 +334,13 @@ def import_seed(database_path: str | Path, seed_path: str | Path, *, data_dir: s
     return summary, backup
 
 
-def reset_reading_and_genetics(database_path: str | Path, *, data_dir: str | Path) -> Path:
-    """Reset the current companion/profile while preserving device/app settings and art overrides."""
+def reset_reading_and_genetics(
+    database_path: str | Path,
+    *,
+    data_dir: str | Path,
+    reset_settings: bool = False,
+) -> Path:
+    """Reset the profile and optionally every SQLite-backed app preference."""
     backup = _backup_path(data_dir, 'pre-reset')
     export_seed(database_path, backup)
     con = sqlite3.connect(str(database_path), timeout=5.0)
@@ -356,6 +361,8 @@ def reset_reading_and_genetics(database_path: str | Path, *, data_dir: str | Pat
         con.execute(
             'UPDATE monster_care SET fullness=65,mood=65,cleanliness=75,bond=0,updated_at=CURRENT_TIMESTAMP WHERE singleton=1'
         )
+        if reset_settings:
+            con.execute('DELETE FROM app_settings')
         con.commit()
     except Exception:
         if con.in_transaction:

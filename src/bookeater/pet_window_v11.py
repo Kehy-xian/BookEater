@@ -82,14 +82,19 @@ class DesktopPetWindowV11(DesktopPetWindowV10):
 
         row = ttk.Frame(body)
         row.pack(fill='x', pady=(8, 0))
-        ttk.Label(row, text='읽은 곳 (선택)').pack(side='left')
+        ttk.Label(row, text='읽은 범위 (선택)').pack(side='left')
         progress_var = tk.StringVar(value=draft.progress_text if draft is not None else '')
         progress_entry = ttk.Entry(row, textvariable=progress_var)
         progress_entry.pack(side='left', fill='x', expand=True, padx=(8, 0))
 
         ttk.Label(body, text='기록').pack(anchor='w', pady=(10, 0))
-        note = tk.Text(body, height=10, wrap='word', undo=True)
-        note.pack(fill='both', expand=True, pady=(4, 8))
+        note_wrap = ttk.Frame(body)
+        note_wrap.pack(fill='both', expand=True, pady=(4, 8))
+        note = tk.Text(note_wrap, height=10, wrap='word', undo=True)
+        note_scroll = ttk.Scrollbar(note_wrap, orient='vertical', command=note.yview)
+        note.configure(yscrollcommand=note_scroll.set)
+        note.pack(side='left', fill='both', expand=True)
+        note_scroll.pack(side='right', fill='y')
         if draft is not None and draft.note_text:
             note.insert('1.0', draft.note_text)
 

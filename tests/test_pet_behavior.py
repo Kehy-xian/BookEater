@@ -57,3 +57,30 @@ def test_offscreen_drag_is_clamped_back_to_visible_desktop():
     motion = planner.tick(PetMotion(-500, 9999), area, blocked=True)
     assert motion.x == 108
     assert motion.y == 600 - 190 - 8
+
+
+def test_walk_targets_stay_on_desktop_floor_and_can_bump_edges():
+    area = WorkArea(0, 0, 1000, 700)
+    planner = RoamPlanner(rng=random.Random(4), step_px=20)
+    motion = PetMotion(400, 700 - 190 - 8)
+    saw_edge_target = False
+    saw_bump = False
+    for _ in range(1500):
+        motion = planner.tick(motion, area)
+        if motion.target_x in {8, 1000 - 190 - 8}:
+            saw_edge_target = True
+        if motion.state == 'bump':
+            saw_bump = True
+        if motion.state == 'walk':
+            assert motion.target_y == 700 - 190 - 8
+    assert saw_edge_target
+    assert saw_bump
+
+
+def test_higher_bond_increases_talking_weight():
+    low = RoamPlanner(rng=random.Random(9), bond=0)
+    high = RoamPlanner(rng=random.Random(9), bond=100)
+    start = PetMotion(100, 100)
+    low_talk = sum(low.choose_ambient_pause(start).state == 'talk' for _ in range(1000))
+    high_talk = sum(high.choose_ambient_pause(start).state == 'talk' for _ in range(1000))
+    assert high_talk > low_talk * 2

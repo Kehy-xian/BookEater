@@ -30,6 +30,8 @@ class BookCandidate:
     detail_url: str | None = None
     cover_url: str | None = None
     source: str = 'catalog'
+    isbn13: str | None = None
+    publisher: str | None = None
 
     def __post_init__(self) -> None:
         if not str(self.source_id).strip():

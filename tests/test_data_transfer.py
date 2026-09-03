@@ -141,6 +141,21 @@ def test_reset_clears_reading_genetics_identity_and_care_but_keeps_settings(tmp_
     assert runtime.store.count_notes(status='fed') == 1
 
 
+def test_full_reset_can_restore_all_app_settings_to_defaults(tmp_path):
+    runtime = bootstrap_runtime(data_dir=tmp_path / 'data', resources=tmp_path / 'resources')
+    _populate(runtime)
+    runtime.settings.set_bool('autostart_enabled', True)
+    runtime.settings.set_bool('intro_drop_enabled', False)
+
+    backup = reset_reading_and_genetics(
+        runtime.database_path, data_dir=runtime.data_dir, reset_settings=True,
+    )
+
+    assert backup.is_file()
+    assert runtime.settings.get('autostart_enabled') is None
+    assert runtime.settings.get_bool('intro_drop_enabled', True) is True
+
+
 def test_seed_extension_is_distinct_from_live_database_extension(tmp_path):
     runtime = bootstrap_runtime(data_dir=tmp_path / 'data', resources=tmp_path / 'resources')
     assert runtime.database_path.suffix == '.sqlite3'

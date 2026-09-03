@@ -91,6 +91,7 @@ def test_aladin_worker_payload_maps_to_real_book_candidate_and_closes_response()
         'isbn13': '9788931021295',
         'title': '어린왕자',
         'author': '생텍쥐페리',
+        'publisher': '문예출판사',
         'description': '실제 책 설명',
         'link': 'https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=1&amp;partner=openAPI',
         'cover_url': 'https://image.aladin.co.kr/cover.jpg',
@@ -106,6 +107,8 @@ def test_aladin_worker_payload_maps_to_real_book_candidate_and_closes_response()
     assert books[0].detail_url.startswith('https://www.aladin.co.kr/')
     assert '&amp;' not in books[0].detail_url
     assert books[0].source == 'aladin'
+    assert books[0].isbn13 == '9788931021295'
+    assert books[0].publisher == '문예출판사'
     assert response.closed is True
 
 

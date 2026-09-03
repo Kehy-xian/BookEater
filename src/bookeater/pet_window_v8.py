@@ -7,7 +7,7 @@ from .pet_fallback_forms import approved_visual_form, fallback_family, fallback_
 from .pet_sprite import TkSpriteCache
 from .pet_window_v7 import DesktopPetWindowV7
 from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime
-from .services.dialogue import choose_ambient_line
+from .services.dialogue import choose_ambient_line, greeting_line
 
 
 class DesktopPetWindowV8(DesktopPetWindowV7):
@@ -19,6 +19,22 @@ class DesktopPetWindowV8(DesktopPetWindowV7):
         self._visual_form_id = runtime.store.load_state().form_id
         resource_base = runtime.model_dir.parents[2]
         self._sprite_cache = TkSpriteCache(self.tk, resource_base)
+        self.root.after(1900, self._show_launch_greeting)
+
+    def _show_launch_greeting(self) -> None:
+        if self._busy or self._dragging or self._open_panels or self._pet_state == 'drop':
+            self.root.after(700, self._show_launch_greeting)
+            return
+        state = self.runtime.store.load_state()
+        self._talk_line = greeting_line(
+            state.form_id, self.runtime.care.load().bond, rng=self._dialogue_rng,
+        )
+        self._talk_cycle = self._frame // 12
+        self._pet_state = 'talk'
+        self._motion = self._motion.__class__(
+            self._motion.x, self._motion.y, state='talk',
+            facing=self._motion.facing, hold_ticks=20,
+        )
 
     def _refresh_visual_identity(self) -> None:
         if self._frame % 8:
@@ -41,6 +57,7 @@ class DesktopPetWindowV8(DesktopPetWindowV7):
             self._talk_line = choose_ambient_line(
                 state.form_id,
                 state.entry_count,
+                bond=self.runtime.care.load().bond,
                 rng=self._dialogue_rng,
             )
             self._talk_cycle = cycle
@@ -239,28 +256,60 @@ class DesktopPetWindowV8(DesktopPetWindowV7):
             self._draw_lantern_family(visual_form, fallback_state, bob, foot_shift)
         self._draw_dialogue_overlay()
 
+    def _draw_care_overlay(self, state: str) -> None:
+        c = self.canvas
+        if state == 'snack':
+            c.create_oval(31, 111, 51, 131, fill='#d69b55', outline='#704726', width=2)
+            c.create_text(41, 121, text='· ·', fill='#5a351c', font=('', 8, 'bold'))
+        elif state == 'delicious':
+            c.create_text(95, 35, text='맛있다!', fill=self.palette.ink, font=('', 11, 'bold'))
+            c.create_arc(77, 85, 113, 113, start=190, extent=160, style='arc', outline='#29241f', width=3)
+        elif state == 'play':
+            c.create_text(46, 37, text='♪', fill='#d46b78', font=('', 15, 'bold'))
+            c.create_text(145, 50, text='♪', fill='#678fc6', font=('', 12, 'bold'))
+        elif state == 'wash':
+            for index, (x, y) in enumerate(((38, 56), (54, 34), (137, 43), (153, 72), (48, 111))):
+                radius = 6 + (self._frame + index) % 4
+                c.create_oval(x-radius, y-radius, x+radius, y+radius, outline='#72bcd4', width=2)
+        elif state == 'bump':
+            side = 1 if self._motion.facing >= 0 else -1
+            c.create_text(95 + side * 63, 67, text='콩!', fill=self.palette.ink, font=('', 12, 'bold'))
+
     def _draw(self) -> None:
         if self._sprite_cache is None:
             super()._draw()
+            self._scale_canvas_items()
             return
 
         self._refresh_visual_identity()
-        sprite_state = self._pet_state
+        action_state = self._pet_state
+        sprite_state = action_state
         if sprite_state == 'drop':
+            sprite_state = 'idle'
+        elif sprite_state == 'snack':
+            sprite_state = 'eat'
+        elif sprite_state in {'delicious', 'play', 'wash', 'bump'}:
             sprite_state = 'idle'
 
         if sprite_state in GEULSSIAL_ANIMATIONS:
-            frames = self._sprite_cache.frames(self._visual_form_id, sprite_state)
+            frames = self._sprite_cache.frames(
+                self._visual_form_id, sprite_state, scale=self._pet_scale,
+            )
             if frames:
                 c = self.canvas
                 c.delete('all')
                 image = frames[self._frame % len(frames)]
-                c.create_image(95, 100, image=image, anchor='center')
+                bounce = (0, -7, -13, -5)[self._frame % 4] if action_state == 'play' else 0
+                c.create_image(95, 100 + bounce, image=image, anchor='center')
                 self._draw_dialogue_overlay()
+                self._draw_care_overlay(action_state)
+                self._scale_canvas_items()
                 return
 
         # Missing/corrupt/incomplete PNGs never crash or reveal unapproved final-form art.
         self._draw_route_fallback(sprite_state)
+        self._draw_care_overlay(action_state)
+        self._scale_canvas_items()
 
 
 def run_pet_v8(*, runtime_factory=bootstrap_runtime) -> int:

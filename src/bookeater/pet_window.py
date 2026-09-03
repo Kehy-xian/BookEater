@@ -21,7 +21,7 @@ from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime
 
 
 _TRANSPARENT = '#ff00fe'
-_INTERRUPT_STATES = {'eat', 'spit_memory', 'drop'}
+_INTERRUPT_STATES = {'eat', 'spit_memory', 'drop', 'snack', 'delicious', 'play', 'wash'}
 
 
 class DesktopPetWindow:
@@ -33,9 +33,14 @@ class DesktopPetWindow:
         self.ttk = ttk
         self.runtime = runtime
         self.palette = PetPalette()
+        try:
+            self._pet_scale = max(0.5, min(1.0, float(runtime.settings.get('pet_scale', '1.0') or '1.0')))
+        except (TypeError, ValueError):
+            self._pet_scale = 1.0
+        self._pet_window_size = max(95, round(190 * self._pet_scale))
         self.root = tk.Tk()
         self.root.title('책먹는 몬스터')
-        self.root.geometry('190x190+80+80')
+        self.root.geometry(f'{self._pet_window_size}x{self._pet_window_size}+80+80')
         self.root.overrideredirect(True)
         self.root.attributes('-topmost', True)
         self.root.configure(bg=_TRANSPARENT)
@@ -45,7 +50,7 @@ class DesktopPetWindow:
             self.root.attributes('-alpha', 0.98)
 
         self.canvas = tk.Canvas(
-            self.root, width=190, height=190, bg=_TRANSPARENT,
+            self.root, width=self._pet_window_size, height=self._pet_window_size, bg=_TRANSPARENT,
             highlightthickness=0, bd=0,
         )
         self.canvas.pack(fill='both', expand=True)
@@ -58,13 +63,17 @@ class DesktopPetWindow:
         self._frame = 0
         self._pet_state = 'idle'
         self._busy = False
+        self._tray_icon = None
         self._eat_frames = 0
         self._result_queue: queue.Queue[tuple[str, object]] = queue.Queue()
         self._book_display_to_id: dict[str, str] = {}
 
         # Movement is a pure state machine so it can be stress-tested without Tk.  A short initial
         # idle makes launch feel intentional before the creature begins waddling around.
-        self._roam = RoamPlanner(step_px=5, window_width=190, window_height=190, margin=8)
+        self._roam = RoamPlanner(
+            step_px=6, window_width=self._pet_window_size, window_height=self._pet_window_size, margin=8,
+            bond=self.runtime.care.load().bond,
+        )
         self._motion = PetMotion(80, 80, state='idle', hold_ticks=14)
 
         self.canvas.bind('<ButtonPress-1>', self._drag_start)
@@ -76,9 +85,11 @@ class DesktopPetWindow:
         self.menu = tk.Menu(self.root, tearoff=0)
         self.menu.add_command(label='기록 먹이기', command=self.open_feed_panel)
         self.menu.add_command(label='내 서재', command=self.open_library_panel)
-        self.menu.add_command(label='이 친구', command=self.open_profile_panel)
+        self.menu.add_command(label='내 몬스터 정보 보기', command=self.open_profile_panel)
+        self.menu.add_command(label='집에 보내기 (트레이 축소)', command=self._send_home_to_tray)
         self.menu.add_separator()
-        self.menu.add_command(label='종료', command=self.root.destroy)
+        self.menu.add_command(label='종료', command=self._confirm_exit)
+        self.root.protocol('WM_DELETE_WINDOW', self._confirm_exit)
 
         self.root.update_idletasks()
         self._sync_motion_from_window()
@@ -140,15 +151,42 @@ class DesktopPetWindow:
 
     def _drag_release(self, _event) -> None:
         self._dragging = False
-        # A user may intentionally drag partly off screen. Bring the whole pet back into a usable
-        # work area and forget the old autonomous target so movement never fights the drag.
+        if hasattr(self, '_intro_dropping'):
+            self._intro_dropping = False
+        # Bring the pet back into the work area, then let it visibly fall to the desktop floor.
         self._sync_motion_from_window()
+        area = self._work_area()
+        target_y = self._roam.floor_y(area)
         self._motion = PetMotion(
             self._motion.x, self._motion.y,
-            state='idle', facing=self._motion.facing, hold_ticks=12,
+            state='drop', facing=self._motion.facing,
         )
-        if self._pet_state not in _INTERRUPT_STATES:
-            self._pet_state = 'idle'
+        self._pet_state = 'drop'
+        self._manual_drop_velocity = 3
+        self._manual_drop_target_y = target_y
+        self.root.after(24, self._manual_drop_step)
+
+    def _manual_drop_step(self) -> None:
+        if (
+            self._pet_state != 'drop' or self._dragging or
+            getattr(self, '_intro_dropping', False) or not self.root.winfo_exists()
+        ):
+            return
+        if self._motion.y >= self._manual_drop_target_y:
+            self._motion = PetMotion(
+                self._motion.x, self._manual_drop_target_y,
+                state='bump', facing=self._motion.facing, hold_ticks=7,
+            )
+            self.root.geometry(f'+{self._motion.x}+{self._motion.y}')
+            self._pet_state = 'bump'
+            return
+        self._manual_drop_velocity = min(28, self._manual_drop_velocity + 3)
+        next_y = min(self._manual_drop_target_y, self._motion.y + self._manual_drop_velocity)
+        self._motion = PetMotion(
+            self._motion.x, next_y, state='drop', facing=self._motion.facing,
+        )
+        self.root.geometry(f'+{self._motion.x}+{next_y}')
+        self.root.after(24, self._manual_drop_step)
 
     def _show_menu(self, event) -> None:
         self._menu_open = True
@@ -157,6 +195,87 @@ class DesktopPetWindow:
         finally:
             self.menu.grab_release()
             self._menu_open = False
+
+    def _confirm_exit(self) -> None:
+        from tkinter import messagebox
+        if messagebox.askyesno(
+            '책먹는 몬스터 종료',
+            '책먹는 몬스터를 정말 종료할까요?\n계속 곁에 두려면 “아니요”를 눌러 주세요.',
+            parent=self.root,
+        ):
+            if self._tray_icon is not None:
+                try:
+                    self._tray_icon.stop()
+                except Exception:
+                    pass
+                self._tray_icon = None
+            self.root.destroy()
+
+    def _send_home_to_tray(self) -> None:
+        """Hide without exiting and expose restore/exit actions through the system tray."""
+        from tkinter import messagebox
+        if self._open_panels:
+            messagebox.showinfo(
+                '열린 창이 있어요', '열린 창을 먼저 닫은 뒤 집에 보내 주세요.', parent=self.root,
+            )
+            return
+        if self._tray_icon is not None:
+            self.root.withdraw()
+            return
+        try:
+            from PIL import Image, ImageDraw
+            import pystray
+
+            image = Image.new('RGBA', (64, 64), '#fffaf0')
+            draw = ImageDraw.Draw(image)
+            draw.rounded_rectangle((8, 6, 56, 58), radius=9, fill='#f4edda', outline='#29241f', width=4)
+            draw.ellipse((19, 22, 27, 30), fill='#29241f')
+            draw.ellipse((37, 22, 45, 30), fill='#29241f')
+            draw.arc((20, 27, 44, 45), 15, 165, fill='#29241f', width=3)
+            menu = pystray.Menu(
+                pystray.MenuItem('돌아오기', lambda _icon, _item: self._result_queue.put(('tray_restore', None)), default=True),
+                pystray.MenuItem('종료', lambda _icon, _item: self._result_queue.put(('tray_exit', None))),
+            )
+            self._tray_icon = pystray.Icon('BookEater', image, '책먹는 몬스터', menu)
+            threading.Thread(target=self._tray_icon.run, name='bookeater-tray', daemon=True).start()
+            self.root.withdraw()
+        except Exception:
+            self._tray_icon = None
+            messagebox.showinfo(
+                '트레이 축소를 사용할 수 없어요',
+                '이 환경에서는 트레이 아이콘을 만들 수 없어 작업 표시줄로 최소화했어요.',
+                parent=self.root,
+            )
+            self.root.iconify()
+
+    def _restore_from_tray(self) -> None:
+        if self._tray_icon is not None:
+            try:
+                self._tray_icon.stop()
+            except Exception:
+                pass
+            self._tray_icon = None
+        self.root.deiconify()
+        self.root.lift()
+
+    def _scale_canvas_items(self) -> None:
+        if self._pet_scale != 1.0:
+            self.canvas.scale('all', 0, 0, self._pet_scale, self._pet_scale)
+
+    def _set_pet_scale(self, scale: float, *, persist: bool = True) -> None:
+        self._pet_scale = max(0.5, min(1.0, float(scale)))
+        self._pet_window_size = max(95, round(190 * self._pet_scale))
+        if persist:
+            self.runtime.settings.set('pet_scale', str(self._pet_scale))
+        self._roam.window_width = self._pet_window_size
+        self._roam.window_height = self._pet_window_size
+        self.root.geometry(
+            f'{self._pet_window_size}x{self._pet_window_size}+{self.root.winfo_x()}+{self.root.winfo_y()}'
+        )
+        if getattr(self, '_sprite_cache', None) is not None:
+            self._sprite_cache.invalidate()
+        self._sync_motion_from_window()
+        self._draw()
 
     def _new_panel(self, title: str, geometry: str | None = None):
         """Create a tracked top-level window; roaming pauses while any player panel is open."""
@@ -324,7 +443,7 @@ class DesktopPetWindow:
         tk, ttk = self.tk, self.ttk
         milestones = self.runtime.milestones.load()
         view = self.runtime.feed_service.current_view()
-        win = self._new_panel('이 친구', '380x300')
+        win = self._new_panel('내 몬스터 정보', '380x300')
         body = ttk.Frame(win, padding=18)
         body.pack(fill='both', expand=True)
 
@@ -344,7 +463,7 @@ class DesktopPetWindow:
 
         ttk.Label(
             body,
-            text='성장의 정확한 기준은 이 친구만 알고 있어요.',
+            text='성장의 정확한 기준은 내 몬스터만 알고 있어요.',
             wraplength=335,
         ).pack(anchor='w', pady=(20, 0))
 
@@ -430,7 +549,7 @@ class DesktopPetWindow:
 
         row = ttk.Frame(body)
         row.pack(fill='x', pady=(8, 0))
-        ttk.Label(row, text='읽은 곳 (선택)').pack(side='left')
+        ttk.Label(row, text='읽은 범위 (선택)').pack(side='left')
         progress_var = tk.StringVar()
         ttk.Entry(row, textvariable=progress_var).pack(side='left', fill='x', expand=True, padx=(8, 0))
 
@@ -535,6 +654,11 @@ class DesktopPetWindow:
                 elif kind == 'error':
                     self._busy = False
                     self._pet_state = 'idle'
+                elif kind == 'tray_restore':
+                    self._restore_from_tray()
+                elif kind == 'tray_exit':
+                    self._restore_from_tray()
+                    self._confirm_exit()
         except queue.Empty:
             pass
         self.root.after(100, self._poll_results)

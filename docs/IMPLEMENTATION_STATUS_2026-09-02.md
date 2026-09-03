@@ -45,15 +45,21 @@ reliable checklist by itself.
 
 ### Player experience
 
-- Transparent always-on-top draggable Windows pet with bounded autonomous roaming.
+- Transparent always-on-top draggable Windows pet with floor roaming, edge bump and drag-drop fall.
 - Sprite IDLE/EAT/WALK/READ/SLEEP/TALK/SPIT_MEMORY states and lineage-safe vector fallback.
 - Feed panel, practical bookshelf/timeline, current-monster profile and lineage-tree encyclopedia.
 - Collision-safe book selectors: duplicate title/author labels use publisher, ISBN or a stable
   short local token and never overwrite another book ID in the UI mapping.
 - Local memory resurfacing and broad personality dialogue.
-- First-run drop animation with replay setting; per-user Windows auto-start, default OFF.
-- Care state, snack/play/wash actions and one minimal letter-catching mini-game.
-- Real-catalog recommendation client and local taste/expansion ranking; wishlist save.
+- Optional launch drop animation, 100/75/50% size controls, tray home/restore and per-user Windows
+  auto-start, default OFF.
+- Care state, distinct snack/delicious/play/wash poses and one minimal letter-catching mini-game;
+  bond changes greeting and talk frequency but never the reading-derived evolution lineage.
+- Real-catalog recommendation client, explicit cold-start explanation, local taste/expansion ranking
+  and confirmed wishlist save.
+- Catalog-first ISBN/title/author book registration with edition selection and manual fallback.
+- Bookshelf title/author edit, status explanations and metadata-only deletion that preserves notes
+  and already-established genetics.
 - Explicit update check plus verified installer download, SHA-256 validation, second install
   confirmation and shell-free Windows launch.
 
@@ -89,8 +95,8 @@ reliable checklist by itself.
 
 ## Highest-priority refinement/bug risks
 
-1. Settings/recommendation/download flows need real Windows usability testing for slow network,
-   panel-close and SmartScreen behavior beyond headless CI.
+1. Beta.4 settings/recommendation/book-search/tray/scale flows need real Windows usability testing
+   beyond headless CI, including slow network and panel-close behavior.
 2. Catalog and feedback endpoints need rate-limit, abuse and retention-policy review before public
    deployment.
 

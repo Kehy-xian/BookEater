@@ -12,8 +12,8 @@ import math
 import random
 
 
-AMBIENT_STATES = ('idle', 'walk', 'read', 'sleep', 'talk')
-INTERRUPT_STATES = ('eat', 'spit_memory', 'drop')
+AMBIENT_STATES = ('idle', 'walk', 'read', 'sleep', 'talk', 'bump')
+INTERRUPT_STATES = ('eat', 'spit_memory', 'drop', 'snack', 'delicious', 'play', 'wash')
 
 
 @dataclass(frozen=True)
@@ -54,12 +54,17 @@ class RoamPlanner:
         window_width: int = 190,
         window_height: int = 190,
         margin: int = 8,
+        bond: int = 0,
     ) -> None:
         self.rng = rng or random.Random()
         self.step_px = max(1, int(step_px))
         self.window_width = max(1, int(window_width))
         self.window_height = max(1, int(window_height))
         self.margin = max(0, int(margin))
+        self.bond = max(0, min(100, int(bond)))
+
+    def set_bond(self, bond: int) -> None:
+        self.bond = max(0, min(100, int(bond)))
 
     def _bounds(self, area: WorkArea) -> tuple[int, int, int, int]:
         min_x = area.left + self.margin
@@ -75,14 +80,15 @@ class RoamPlanner:
             max(min_y, min(max_y, int(y))),
         )
 
+    def floor_y(self, area: WorkArea) -> int:
+        return self._bounds(area)[3]
+
     def choose_walk_target(self, motion: PetMotion, area: WorkArea) -> PetMotion:
         min_x, max_x, min_y, max_y = self._bounds(area)
-        # Desktop pets feel less like teleporting windows when vertical drift is restrained.
-        radius_y = min(90, max_y - min_y)
-        lo_y = max(min_y, motion.y - radius_y)
-        hi_y = min(max_y, motion.y + radius_y)
-        tx = self.rng.randint(min_x, max_x)
-        ty = self.rng.randint(lo_y, hi_y) if hi_y >= lo_y else min_y
+        # The creature walks on the desktop floor instead of appearing to float vertically.
+        # Occasionally choosing an exact horizontal edge creates a readable head-bump event.
+        tx = self.rng.choice((min_x, max_x)) if self.rng.random() < 0.16 else self.rng.randint(min_x, max_x)
+        ty = max_y
         facing = -1 if tx < motion.x else 1
         return replace(
             motion,
@@ -95,13 +101,14 @@ class RoamPlanner:
 
     def choose_ambient_pause(self, motion: PetMotion) -> PetMotion:
         # Mostly idle, with occasional readable personality-building poses.
+        talk_weight = 3 + round(self.bond * 0.21)
         state = self.rng.choices(
             population=('idle', 'read', 'sleep', 'talk'),
-            weights=(60, 18, 12, 10),
+            weights=(48, 18, 11, talk_weight),
             k=1,
         )[0]
         hold = {
-            'idle': self.rng.randint(10, 28),
+            'idle': self.rng.randint(7, 20),
             'read': self.rng.randint(16, 34),
             'sleep': self.rng.randint(24, 48),
             'talk': self.rng.randint(8, 18),
@@ -127,6 +134,8 @@ class RoamPlanner:
                     target_x=None,
                     target_y=None,
                 )
+                if arrived.x in {self._bounds(area)[0], self._bounds(area)[1]}:
+                    return replace(arrived, state='bump', hold_ticks=7)
                 return self.choose_ambient_pause(arrived)
             scale = self.step_px / dist
             nx = int(round(motion.x + dx * scale))
@@ -138,6 +147,6 @@ class RoamPlanner:
             return replace(motion, hold_ticks=motion.hold_ticks - 1)
 
         # After a pause, most cycles become a short walk.  Occasionally choose another quiet pose.
-        if self.rng.random() < 0.72:
+        if self.rng.random() < 0.82:
             return self.choose_walk_target(motion, area)
         return self.choose_ambient_pause(motion)

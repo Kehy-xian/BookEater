@@ -46,11 +46,18 @@ _MATURE = {
     'route_c': ('기억들이 서로 연결되는 순간을 이제 제법 알아보겠어.',),
 }
 
+_BOND_LINES = {
+    'low': ('아직은 조금 낯설지만, 곁에 있어도 괜찮아.',),
+    'mid': ('네가 오면 오늘은 무슨 책 이야기일지 궁금해.',),
+    'high': ('왔구나! 오늘도 네 문장을 기다리고 있었어.', '우리 제법 서로를 잘 알게 된 것 같아.'),
+}
+
 
 def choose_ambient_line(
     form_id: str,
     entry_count: int,
     *,
+    bond: int = 0,
     rng: random.Random | None = None,
 ) -> str:
     rng = rng or random.Random()
@@ -61,7 +68,23 @@ def choose_ambient_line(
         pool.extend(_EARLY)
     if count >= 40:
         pool.extend(_MATURE.get(route, ()))
+    bond = max(0, min(100, int(bond)))
+    bond_group = 'high' if bond >= 65 else ('mid' if bond >= 25 else 'low')
+    pool.extend(_BOND_LINES[bond_group])
     return rng.choice(pool)
+
+
+def greeting_line(form_id: str, bond: int, *, rng: random.Random | None = None) -> str:
+    """A relationship-aware launch greeting whose broad voice still follows lineage."""
+    rng = rng or random.Random()
+    bond = max(0, min(100, int(bond)))
+    if bond >= 65:
+        prefix = rng.choice(('다시 만나서 반가워!', '기다리고 있었어!'))
+    elif bond >= 25:
+        prefix = rng.choice(('왔구나.', '오늘도 만났네.'))
+    else:
+        prefix = rng.choice(('안녕… 천천히 친해져 보자.', '처음엔 조금 조용할지도 몰라.'))
+    return f'{prefix} {choose_ambient_line(form_id, 0, bond=bond, rng=rng)}'
 
 
 def after_feed_line(form_id: str, *, rng: random.Random | None = None) -> str:

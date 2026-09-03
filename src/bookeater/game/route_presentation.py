@@ -69,7 +69,7 @@ def route_public_growth_view(
         hint = f"{hint} {WORLD_HINTS[motifs[0]]}"
 
     if previous_form is not None and decision.form_id != previous_form:
-        change = f'{entry.public_name}(으)로 모습이 달라졌다. 어떤 기록이 이 모습을 만들었는지는 이 친구만 알고 있다.'
+        change = f'{entry.public_name}(으)로 모습이 달라졌다. 어떤 기록이 이 모습을 만들었는지는 내 몬스터만 알고 있다.'
     elif decision.delayed:
         change = '조금 더 먹어 보고 싶은지 아직 다음 모습으로 변하지 않았다.'
     else:

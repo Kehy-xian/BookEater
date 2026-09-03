@@ -68,7 +68,7 @@ class DesktopPetWindowV2(DesktopPetWindow):
 
         detail = ttk.Label(
             body,
-            text='항목을 선택하면 이 친구에 대한 짧은 힌트를 볼 수 있어요.',
+            text='항목을 선택하면 몬스터 모습에 대한 짧은 힌트를 볼 수 있어요.',
             wraplength=650,
             justify='left',
         )
@@ -104,7 +104,7 @@ class DesktopPetWindowV2(DesktopPetWindow):
         entry = catalog_entry(state.form_id)
         encountered = self.runtime.encyclopedia.encountered_ids()
 
-        win = self._new_panel('이 친구', '410x360')
+        win = self._new_panel('내 몬스터 정보', '410x360')
         body = ttk.Frame(win, padding=18)
         body.pack(fill='both', expand=True)
 

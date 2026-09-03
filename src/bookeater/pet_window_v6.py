@@ -20,6 +20,7 @@ from .version import APP_VERSION
 
 class DesktopPetWindowV6(DesktopPetWindowV5):
     def __init__(self, runtime: BookEaterRuntime):
+        self._intro_dropping = False
         self._drop_y = 0
         self._drop_v = 0
         self._drop_target_y = 80
@@ -30,24 +31,27 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
 
     def _maybe_start_first_drop(self) -> None:
         enabled = self.runtime.settings.get_bool('intro_drop_enabled', True)
-        seen = self.runtime.settings.get_bool('intro_seen', False)
-        if not enabled or seen:
-            if not seen:
-                self.runtime.settings.set_bool('intro_seen', True)
+        if not enabled:
+            area = self._work_area()
+            x, _ = self._roam.clamp_position(self._motion.x, self._motion.y, area)
+            floor_y = self._roam.floor_y(area)
+            self._motion = PetMotion(x, floor_y, state='idle', facing=self._motion.facing, hold_ticks=10)
+            self.root.geometry(f'+{x}+{floor_y}')
             return
 
         area = self._work_area()
-        target_x = max(area.left + 8, min(self._motion.x, area.right - 198))
-        self._drop_target_y = max(area.top + 32, min(100, area.bottom - 240))
+        target_x = max(area.left + 8, min(self._motion.x, area.right - self._pet_window_size - 8))
+        self._drop_target_y = max(area.top + 8, area.bottom - self._pet_window_size - 8)
         self._drop_y = area.top - 200
         self._drop_v = 8
+        self._intro_dropping = True
         self._pet_state = 'drop'
         self._motion = PetMotion(target_x, self._drop_y, state='drop', facing=1)
         self.root.geometry(f'+{target_x}+{self._drop_y}')
         self.root.after(35, self._drop_step)
 
     def _drop_step(self) -> None:
-        if self._pet_state != 'drop' or not self.root.winfo_exists():
+        if not self._intro_dropping or self._pet_state != 'drop' or not self.root.winfo_exists():
             return
         self._drop_v = min(30, self._drop_v + 3)
         self._drop_y += self._drop_v
@@ -75,11 +79,11 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
             state='idle', facing=self._motion.facing, hold_ticks=18,
         )
         self._pet_state = 'idle'
-        self.runtime.settings.set_bool('intro_seen', True)
+        self._intro_dropping = False
 
     def open_settings_panel(self) -> None:
         tk, ttk = self.tk, self.ttk
-        win = self._new_panel('설정', '430x430')
+        win = self._new_panel('설정', '470x540')
         body = ttk.Frame(win, padding=18)
         body.pack(fill='both', expand=True)
         ttk.Label(body, text='설정', font=('', 18, 'bold')).pack(anchor='w')
@@ -89,20 +93,16 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
 
         def toggle_intro() -> None:
             self.runtime.settings.set_bool('intro_drop_enabled', bool(intro_var.get()))
-            msg.set('첫 만남 연출 설정을 저장했어요.')
+            msg.set('시작 애니메이션 설정을 저장했어요. 다음 실행에도 적용됩니다.')
 
         ttk.Checkbutton(
             body,
-            text='처음 만날 때 하늘에서 콩! 떨어지기',
+            text='시작 시 애니메이션 실행',
             variable=intro_var,
             command=toggle_intro,
         ).pack(anchor='w', pady=(14, 5))
 
-        def replay_next_launch() -> None:
-            self.runtime.settings.set_bool('intro_seen', False)
-            msg.set('다음 실행 때 첫 만남 연출을 다시 보여줄게요.')
-
-        ttk.Button(body, text='다음 실행에 첫 만남 다시 보기', command=replay_next_launch).pack(anchor='w')
+        ttk.Label(body, text='변경한 설정은 다음 실행에도 그대로 적용됩니다.').pack(anchor='w')
 
         auto_available = can_enable_autostart()
         auto_var = tk.BooleanVar(value=is_autostart_enabled() if auto_available else False)
@@ -119,7 +119,7 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
 
         auto = ttk.Checkbutton(
             body,
-            text='Windows 시작 시 책먹는 몬스터도 깨우기',
+            text='Windows 시작 시 자동 실행',
             variable=auto_var,
             command=toggle_autostart,
         )
@@ -131,6 +131,20 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
                 text='이 옵션은 Windows에 설치된 실행파일에서 사용할 수 있어요.',
                 wraplength=380,
             ).pack(anchor='w')
+
+        ttk.Label(body, text='몬스터 크기').pack(anchor='w', pady=(16, 3))
+        size_var = tk.StringVar(value=str(self._pet_scale))
+        size_row = ttk.Frame(body)
+        size_row.pack(anchor='w')
+
+        def change_size() -> None:
+            self._set_pet_scale(float(size_var.get()))
+            msg.set('몬스터 크기를 저장했어요. 다음 실행에도 적용됩니다.')
+
+        for value, label in (('1.0', '기본'), ('0.75', '작게'), ('0.5', '아주 작게')):
+            ttk.Radiobutton(
+                size_row, text=label, value=value, variable=size_var, command=change_size,
+            ).pack(side='left', padx=(0, 8))
 
         ttk.Separator(body).pack(fill='x', pady=(18, 10))
         update_row = ttk.Frame(body)
