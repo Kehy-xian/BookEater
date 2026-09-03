@@ -10,6 +10,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: bookeater-release-channel
+  cancel-in-progress: false
+
 jobs:
   build-release:
     runs-on: windows-latest
@@ -34,6 +38,19 @@ jobs:
             throw "unsupported release ref $env:GITHUB_REF"
           }
           if ($tag -ne $expected) { throw "release ref $tag does not match application version $expected" }
+
+          if ($env:GITHUB_REF_TYPE -ne 'tag') {
+            $sourceSha = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/heads/sprint-04-play-loop" --jq '.object.sha'
+            if ($LASTEXITCODE -ne 0) { throw 'release source branch could not be resolved' }
+            if ($env:GITHUB_SHA -ne $sourceSha) {
+              throw "release trigger commit $env:GITHUB_SHA is not current source head $sourceSha"
+            }
+          }
+
+          $tagSha = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha' 2>$null
+          if ($LASTEXITCODE -eq 0 -and $tagSha -ne $env:GITHUB_SHA) {
+            throw "existing tag $tag points to $tagSha, not release commit $env:GITHUB_SHA"
+          }
           "BOOKEATER_RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Install build dependencies
         run: python -m pip install -r requirements-build.txt
@@ -82,36 +99,32 @@ jobs:
           $actual = (Get-FileHash 'dist\installer\BookEater-Setup.exe' -Algorithm SHA256).Hash.ToLower()
           if ($manifest.latest_version -ne $version) { throw 'release manifest version mismatch' }
           if ($manifest.sha256 -ne $actual) { throw 'release manifest installer hash mismatch' }
-      - name: Publish or refresh GitHub Release assets
+      - name: Publish immutable GitHub Release assets
         shell: pwsh
         run: |
           $prerelease = $env:BOOKEATER_RELEASE_TAG -match '-'
           gh release view $env:BOOKEATER_RELEASE_TAG *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $env:BOOKEATER_RELEASE_TAG `
-              'dist\installer\BookEater-Setup.exe' `
-              'dist\installer\release-manifest.json' `
-              --clobber
-          } else {
-            $releaseArgs = @(
-              'release','create',$env:BOOKEATER_RELEASE_TAG,
-              'dist\installer\BookEater-Setup.exe',
-              'dist\installer\release-manifest.json',
-              '--title',"책먹는 몬스터 $env:BOOKEATER_RELEASE_TAG"
-            )
-            if ($env:GITHUB_REF_TYPE -ne 'tag') {
-              $releaseArgs += @('--target', $env:GITHUB_SHA)
-            }
-            $version = $env:BOOKEATER_RELEASE_TAG.TrimStart('v')
-            $notesPath = "docs/releases/$version.md"
-            if (Test-Path $notesPath) {
-              $releaseArgs += @('--notes-file', $notesPath)
-            } else {
-              $releaseArgs += '--generate-notes'
-            }
-            if ($prerelease) { $releaseArgs += '--prerelease' }
-            & gh @releaseArgs
+            throw 'release already exists; published version assets are immutable'
           }
+          $releaseArgs = @(
+            'release','create',$env:BOOKEATER_RELEASE_TAG,
+            'dist\installer\BookEater-Setup.exe',
+            'dist\installer\release-manifest.json',
+            '--title',"책먹는 몬스터 $env:BOOKEATER_RELEASE_TAG"
+          )
+          if ($env:GITHUB_REF_TYPE -ne 'tag') {
+            $releaseArgs += @('--target', $env:GITHUB_SHA)
+          }
+          $version = $env:BOOKEATER_RELEASE_TAG.TrimStart('v')
+          $notesPath = "docs/releases/$version.md"
+          if (Test-Path $notesPath) {
+            $releaseArgs += @('--notes-file', $notesPath)
+          } else {
+            $releaseArgs += '--generate-notes'
+          }
+          if ($prerelease) { $releaseArgs += '--prerelease' }
+          & gh @releaseArgs
           if ($LASTEXITCODE -ne 0) { throw "GitHub Release publish exit=$LASTEXITCODE" }
       - name: Publish fixed update-channel manifest
         shell: pwsh
@@ -128,6 +141,16 @@ jobs:
           $endpoint = "repos/$env:GITHUB_REPOSITORY/contents/release-manifest.json"
           $existingJson = gh api "$endpoint`?ref=$branch" 2>$null
           $existing = $LASTEXITCODE -eq 0
+          if ($existing) {
+            $existingPayload = $existingJson | ConvertFrom-Json
+            $existingBytes = [Convert]::FromBase64String(($existingPayload.content -replace '\s', ''))
+            $existingPath = Join-Path $env:RUNNER_TEMP 'existing-release-manifest.json'
+            [IO.File]::WriteAllBytes($existingPath, $existingBytes)
+            python tools/validate_update_channel.py `
+              $existingPath `
+              'dist\installer\release-manifest.json'
+            if ($LASTEXITCODE -ne 0) { throw 'unsafe update-channel transition rejected' }
+          }
           $body = @{
             message = "Publish update manifest for $env:BOOKEATER_RELEASE_TAG"
             content = [Convert]::ToBase64String(

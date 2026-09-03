@@ -20,15 +20,25 @@ from bookeater.services.update_install import (
 
 
 class ChunkedResponse:
-    def __init__(self, data: bytes, *, declared_size: int | None = None):
+    def __init__(
+        self,
+        data: bytes,
+        *,
+        declared_size: int | None = None,
+        final_url: str = 'https://downloads.example.com/BookEater-Setup.exe',
+    ):
         self.data = data
         self.offset = 0
         self.headers = {} if declared_size is None else {'Content-Length': str(declared_size)}
+        self.final_url = final_url
 
     def read(self, limit: int) -> bytes:
         chunk = self.data[self.offset:self.offset + max(1, min(limit, 7))]
         self.offset += len(chunk)
         return chunk
+
+    def geturl(self) -> str:
+        return self.final_url
 
 
 def manifest_for(data: bytes, *, version: str = '0.2.0') -> UpdateManifest:
@@ -98,6 +108,20 @@ def test_declared_or_streamed_oversize_is_rejected_and_cleaned(tmp_path):
             updates_dir=tmp_path,
             opener=lambda request, timeout: ChunkedResponse(data),
             max_bytes=8,
+        )
+    assert not list(tmp_path.iterdir())
+
+
+def test_insecure_installer_redirect_is_rejected_and_cleaned(tmp_path):
+    data = b'MZredirected-installer'
+    with pytest.raises(UpdateDownloadError, match='redirect'):
+        download_verified_installer(
+            manifest_for(data),
+            updates_dir=tmp_path,
+            opener=lambda request, timeout: ChunkedResponse(
+                data,
+                final_url='http://evil.example.com/BookEater-Setup.exe',
+            ),
         )
     assert not list(tmp_path.iterdir())
 

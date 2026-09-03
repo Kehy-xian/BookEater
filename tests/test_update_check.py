@@ -20,12 +20,16 @@ from bookeater.version import APP_VERSION
 
 
 class FakeResponse:
-    def __init__(self, payload: object, headers=None):
+    def __init__(self, payload: object, headers=None, *, final_url: str | None = None):
         self.data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
         self.headers = headers or {}
+        self.final_url = final_url
 
     def read(self, limit: int):
         return self.data[:limit]
+
+    def geturl(self):
+        return self.final_url or 'https://updates.example.com/latest.json'
 
 
 class ClosableResponse(FakeResponse):
@@ -90,6 +94,30 @@ def test_manifest_response_is_closed_after_reading():
 
     assert result.update_available is True
     assert response.closed is True
+
+
+def test_manifest_rejects_insecure_redirect_and_closes_response():
+    response = ClosableResponse(valid_manifest('0.1.0-beta.1'))
+    response.final_url = 'http://evil.example.com/latest.json'
+    checker = UpdateChecker(
+        'https://updates.example.com/latest.json',
+        opener=lambda request, timeout: response,
+    )
+
+    with pytest.raises(UpdateManifestError, match='HTTPS'):
+        checker.fetch_manifest()
+
+    assert response.closed is True
+
+
+def test_manifest_rejects_invalid_content_length():
+    checker = UpdateChecker(
+        'https://updates.example.com/latest.json',
+        opener=lambda request, timeout: FakeResponse(valid_manifest(), {'Content-Length': 'nope'}),
+    )
+
+    with pytest.raises(UpdateManifestError, match='Content-Length'):
+        checker.fetch_manifest()
 
 
 def test_manifest_requires_https_urls_and_sha256():

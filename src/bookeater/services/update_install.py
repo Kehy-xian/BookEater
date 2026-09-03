@@ -19,7 +19,7 @@ import threading
 from typing import Any, Callable
 from urllib.request import Request, urlopen
 
-from .update_check import UpdateManifest, _safe_https_url, parse_version
+from .update_check import UpdateManifest, _safe_https_url, _safe_response_url, parse_version
 from ..version import APP_VERSION
 
 
@@ -140,6 +140,10 @@ def download_verified_installer(
         response = None
         try:
             response = opener(request, timeout=max(1.0, float(timeout)))
+            try:
+                _safe_response_url(response, url, name='final installer URL')
+            except Exception as exc:
+                raise UpdateDownloadError('installer redirect is not safe') from exc
             length = response.headers.get('Content-Length') if getattr(response, 'headers', None) else None
             if length is not None:
                 try:

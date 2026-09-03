@@ -99,6 +99,13 @@ def _safe_https_url(value: Any, *, name: str, allow_local_http: bool = True) -> 
     return text
 
 
+def _safe_response_url(response: Any, requested_url: str, *, name: str) -> str:
+    """Validate the effective URL after redirects, falling back for simple test doubles."""
+    geturl = getattr(response, 'geturl', None)
+    final_url = geturl() if callable(geturl) else requested_url
+    return _safe_https_url(final_url or requested_url, name=name)
+
+
 def update_manifest_endpoint(
     *,
     resource_root: str | Path,
@@ -143,9 +150,17 @@ class UpdateChecker:
         response = None
         try:
             response = self.opener(request, timeout=max(1.0, float(self.timeout)))
+            _safe_response_url(response, self.endpoint, name='final update manifest URL')
             length = response.headers.get('Content-Length') if getattr(response, 'headers', None) else None
-            if length and int(length) > MAX_MANIFEST_BYTES:
-                raise UpdateManifestError('update manifest is too large')
+            if length is not None:
+                try:
+                    declared = int(length)
+                except (TypeError, ValueError) as exc:
+                    raise UpdateManifestError('update manifest has an invalid Content-Length') from exc
+                if declared < 0:
+                    raise UpdateManifestError('update manifest has an invalid Content-Length')
+                if declared > MAX_MANIFEST_BYTES:
+                    raise UpdateManifestError('update manifest is too large')
             raw = response.read(MAX_MANIFEST_BYTES + 1)
         except UpdateManifestError:
             raise

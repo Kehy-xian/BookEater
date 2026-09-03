@@ -36,6 +36,7 @@ on:
       - 'resources/update_manifest_endpoint.txt'
       - 'server/**'
       - 'tools/build_update_manifest.py'
+      - 'tools/validate_update_channel.py'
       - 'tools/validate_sprite_pack.py'
       - 'tools/install_sprite_override.py'
       - 'tools/generate_paperling_sprites.py'
