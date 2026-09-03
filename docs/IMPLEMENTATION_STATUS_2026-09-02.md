@@ -89,6 +89,8 @@ product direction and is no longer a reliable checklist by itself.
 ## Highest-priority refinement/bug risks
 
 1. Production update channel must be exercised with a prerelease tag before public distribution.
+   The fixed `release-channel` branch supports prereleases; GitHub's `releases/latest` redirect
+   intentionally excludes them. Development versions are ordered below alpha/beta/rc builds.
 2. Settings/recommendation/download flows need real Windows usability testing for slow network,
    panel-close and SmartScreen behavior beyond headless CI.
 3. Catalog and feedback endpoints need rate-limit, abuse and retention-policy review before public

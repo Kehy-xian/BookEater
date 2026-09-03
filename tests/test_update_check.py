@@ -28,6 +28,15 @@ class FakeResponse:
         return self.data[:limit]
 
 
+class ClosableResponse(FakeResponse):
+    def __init__(self, payload: object, headers=None):
+        super().__init__(payload, headers=headers)
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
 def valid_manifest(version='0.1.0'):
     return {
         'latest_version': version,
@@ -38,6 +47,9 @@ def valid_manifest(version='0.1.0'):
 
 
 def test_version_order_handles_prerelease_without_forcing_dev_above_release():
+    assert parse_version('0.1.0-dev') < parse_version('0.1.0-alpha.1')
+    assert parse_version('0.1.0-alpha.1') < parse_version('0.1.0-beta.1')
+    assert parse_version('0.1.0-beta.1') < parse_version('0.1.0-rc.1')
     assert parse_version('0.1.0-dev') < parse_version('0.1.0')
     assert parse_version('0.1.0') < parse_version('0.1.1-dev')
     assert not (parse_version('1.0.0') < parse_version('0.9.9'))
@@ -65,6 +77,19 @@ def test_same_or_older_version_is_not_an_update():
         opener=lambda request, timeout: FakeResponse(valid_manifest('0.1.0-dev')),
     )
     assert checker.check(current_version='0.1.0-dev').update_available is False
+
+
+def test_manifest_response_is_closed_after_reading():
+    response = ClosableResponse(valid_manifest('0.1.0-beta.1'))
+    checker = UpdateChecker(
+        'https://updates.example.com/latest.json',
+        opener=lambda request, timeout: response,
+    )
+
+    result = checker.check(current_version='0.1.0-dev')
+
+    assert result.update_available is True
+    assert response.closed is True
 
 
 def test_manifest_requires_https_urls_and_sha256():
@@ -103,6 +128,16 @@ def test_endpoint_file_and_environment_override_fail_closed(tmp_path):
 
 def test_unconfigured_update_checker_is_cleanly_disabled(tmp_path):
     assert configured_update_checker(resource_root=tmp_path, environ={}) is None
+
+
+def test_bundled_endpoint_uses_prerelease_compatible_channel():
+    endpoint = update_manifest_endpoint(resource_root=ROOT, environ={})
+
+    assert endpoint == (
+        'https://raw.githubusercontent.com/Kehy-xian/BookEater/'
+        'release-channel/release-manifest.json'
+    )
+    assert '/releases/latest/' not in endpoint
 
 
 def test_installer_and_python_version_sources_are_in_sync():

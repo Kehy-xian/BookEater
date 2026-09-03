@@ -96,6 +96,53 @@ jobs:
             & gh @releaseArgs
           }
           if ($LASTEXITCODE -ne 0) { throw "GitHub Release publish exit=$LASTEXITCODE" }
+      - name: Publish fixed update-channel manifest
+        shell: pwsh
+        run: |
+          $branch = 'release-channel'
+          gh api "repos/$env:GITHUB_REPOSITORY/git/ref/heads/$branch" *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh api --method POST "repos/$env:GITHUB_REPOSITORY/git/refs" `
+              -f ref="refs/heads/$branch" `
+              -f sha="$env:GITHUB_SHA"
+            if ($LASTEXITCODE -ne 0) { throw 'release-channel branch creation failed' }
+          }
+
+          $endpoint = "repos/$env:GITHUB_REPOSITORY/contents/release-manifest.json"
+          $existingJson = gh api "$endpoint`?ref=$branch" 2>$null
+          $existing = $LASTEXITCODE -eq 0
+          $body = @{
+            message = "Publish update manifest for $env:GITHUB_REF_NAME"
+            content = [Convert]::ToBase64String(
+              [IO.File]::ReadAllBytes('dist\installer\release-manifest.json')
+            )
+            branch = $branch
+          }
+          if ($existing) {
+            $body.sha = ($existingJson | ConvertFrom-Json).sha
+          }
+          $body | ConvertTo-Json | gh api --method PUT $endpoint --input -
+          if ($LASTEXITCODE -ne 0) { throw 'update-channel manifest publish failed' }
+      - name: Verify public update channel
+        shell: pwsh
+        run: |
+          $version = python -c "import sys; sys.path.insert(0, 'src'); from bookeater.version import APP_VERSION; print(APP_VERSION)"
+          $expected = Get-Content 'dist\installer\release-manifest.json' -Raw | ConvertFrom-Json
+          $channel = "https://raw.githubusercontent.com/$env:GITHUB_REPOSITORY/release-channel/release-manifest.json"
+          $published = $null
+          foreach ($attempt in 1..8) {
+            try {
+              $published = Invoke-RestMethod -Uri "$channel`?run=$env:GITHUB_RUN_ID-$attempt"
+            } catch {
+              $published = $null
+            }
+            if ($published -and $published.latest_version -eq $version) { break }
+            Start-Sleep -Seconds 5
+          }
+          if (-not $published) { throw 'public update-channel manifest is unavailable' }
+          if ($published.latest_version -ne $expected.latest_version) { throw 'published version mismatch' }
+          if ($published.installer_url -ne $expected.installer_url) { throw 'published installer URL mismatch' }
+          if ($published.sha256 -ne $expected.sha256) { throw 'published installer hash mismatch' }
       - name: Upload release verification artifact
         uses: actions/upload-artifact@v4
         with:

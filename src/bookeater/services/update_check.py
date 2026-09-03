@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-"""Opt-in, read-only update checking for BookEater.
+"""Opt-in, read-only update-manifest checking for BookEater.
 
-The desktop never self-replaces its executable and never modifies the user database here.  A user
-must explicitly press the update-check button, and a newer installer is only opened in the default
-browser after another explicit click.  Production manifests must use HTTPS; localhost HTTP is
+The desktop never replaces its executable or modifies the user database here. A player must
+explicitly request an update check. Production manifests must use HTTPS; localhost HTTP is
 accepted for development tests.
 """
 
@@ -80,7 +79,11 @@ def parse_version(value: str) -> ParsedVersion:
             if token.isdigit():
                 pre.append((0, int(token)))
             else:
-                pre.append((1, token.lower()))
+                normalized = token.lower()
+                # Development builds predate every named prerelease. This lets a packaged
+                # ``0.1.0-dev`` bridge build discover ``0.1.0-beta.1`` while retaining SemVer-like
+                # numeric/alphanumeric ordering for alpha, beta and rc identifiers.
+                pre.append((-1 if normalized == 'dev' else 1, normalized))
     return ParsedVersion(int(match.group(1)), int(match.group(2)), int(match.group(3)), tuple(pre))
 
 
@@ -137,6 +140,7 @@ class UpdateChecker:
             self.endpoint,
             headers={'Accept': 'application/json', 'User-Agent': f'BookEater/{APP_VERSION}'},
         )
+        response = None
         try:
             response = self.opener(request, timeout=max(1.0, float(self.timeout)))
             length = response.headers.get('Content-Length') if getattr(response, 'headers', None) else None
@@ -147,6 +151,13 @@ class UpdateChecker:
             raise
         except Exception as exc:
             raise UpdateUnavailable('update server could not be reached') from exc
+        finally:
+            close = getattr(response, 'close', None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    pass
         if len(raw) > MAX_MANIFEST_BYTES:
             raise UpdateManifestError('update manifest is too large')
         try:
