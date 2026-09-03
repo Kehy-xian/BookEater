@@ -56,6 +56,32 @@ jobs:
             throw "existing tag $tag points to $($tagMatch[0].object.sha), not release commit $env:GITHUB_SHA"
           }
           "BOOKEATER_RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Verify production catalog contract
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = 'src'
+          @'
+          import time
+          from bookeater.services.catalog import configured_catalog_client
+
+          error = None
+          for attempt in range(3):
+              try:
+                  client = configured_catalog_client(resources='.')
+                  assert client is not None, 'production catalog endpoint is not configured'
+                  books = client.discovery_pool(limit=3)
+                  assert books, 'production catalog returned no real books'
+                  assert all(book.source_id and book.title for book in books)
+                  assert all(book.source == 'aladin' for book in books)
+                  print(f'PRODUCTION_CATALOG_OK books={len(books)}')
+                  break
+              except Exception as exc:
+                  error = exc
+                  if attempt < 2:
+                      time.sleep(3)
+          else:
+              raise RuntimeError('production catalog contract failed') from error
+          '@ | python -
       - name: Install build dependencies
         run: python -m pip install -r requirements-build.txt
       - name: Expand and validate production sprites

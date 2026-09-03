@@ -45,3 +45,5 @@ def test_release_workflow_never_clobbers_published_assets():
     assert 'group: bookeater-release-channel' in workflow
     assert 'release trigger commit $env:GITHUB_SHA is not current source head' in workflow
     assert 'git/matching-refs/tags/$tag' in workflow
+    assert 'Verify production catalog contract' in workflow
+    assert 'PRODUCTION_CATALOG_OK' in workflow

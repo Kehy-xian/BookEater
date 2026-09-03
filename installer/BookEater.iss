@@ -1,6 +1,6 @@
 #define MyAppName "책먹는 몬스터"
 #define MyAppExeName "BookEater.exe"
-#define MyAppVersion "0.1.0-beta.2"
+#define MyAppVersion "0.1.0-beta.3"
 #define MyAppPublisher "BookEater"
 
 [Setup]
