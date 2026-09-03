@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - sprint-03-hybrid-nlp
+      - sprint-04-play-loop
     paths:
       - 'cloudflare/**'
       - '.github/workflows/cloudflare-typecheck.yml'
