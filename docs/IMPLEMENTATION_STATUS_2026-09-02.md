@@ -1,7 +1,7 @@
-# BookEater implementation status — 2026-09-02
+# BookEater implementation status — refreshed 2026-09-03
 
-This file is the current repository-backed status. The current release candidate is
-`0.1.0-beta.1`. `PRODUCT_ROADMAP_V1.md` records the earlier product direction and is no longer a
+This file is the current repository-backed status. The first public prerelease is
+`v0.1.0-beta.1`. `PRODUCT_ROADMAP_V1.md` records the earlier product direction and is no longer a
 reliable checklist by itself.
 
 ## Product constraints that remain binding
@@ -62,8 +62,10 @@ reliable checklist by itself.
 - Full test discovery in core CI rather than a manually maintained test-file list.
 - Windows package smoke with bundled model/resources and packaged `--mutex-smoke`.
 - Windows installer compile, manifest hash contract and in-place upgrade E2E.
-- Tag-gated GitHub Release workflow that publishes `BookEater-Setup.exe` and
-  `release-manifest.json`; no release is published without an explicit matching version tag.
+- Version-gated GitHub Release workflow that publishes `BookEater-Setup.exe`, a matching
+  `release-manifest.json` and the fixed prerelease-compatible `release-channel` manifest.
+- Public `v0.1.0-beta.1` Windows prerelease; packaged smoke/mutex, installer upgrade preservation,
+  public manifest and exact public installer SHA-256 validation all passed.
 - Stateless Kakao catalog proxy and Cloudflare opt-in feedback backend foundations.
 
 ## Implemented foundations but not production-connected
@@ -71,8 +73,6 @@ reliable checklist by itself.
 - Catalog proxy code exists, but `resources/catalog_endpoint.txt` has no deployed public endpoint.
 - Feedback backend schema/API exists, but the desktop has no consent, correction/odd-result or
   deletion-request UI and therefore sends nothing.
-- Release/update workflow exists, but a stable version tag and first GitHub Release have not been
-  created yet.
 - Update downloads are hash-verified, but the installer is not Authenticode-signed; Windows may
   show SmartScreen warnings.
 
@@ -89,18 +89,15 @@ reliable checklist by itself.
 
 ## Highest-priority refinement/bug risks
 
-1. Production update channel must be exercised with a prerelease tag before public distribution.
-   The fixed `release-channel` branch supports prereleases; GitHub's `releases/latest` redirect
-   intentionally excludes them. Development versions are ordered below alpha/beta/rc builds.
-2. Settings/recommendation/download flows need real Windows usability testing for slow network,
+1. Settings/recommendation/download flows need real Windows usability testing for slow network,
    panel-close and SmartScreen behavior beyond headless CI.
-3. Catalog and feedback endpoints need rate-limit, abuse and retention-policy review before public
+2. Catalog and feedback endpoints need rate-limit, abuse and retention-policy review before public
    deployment.
 
 ## Next order
 
-1. Create a non-public-facing prerelease version/tag only after confirming version text and release
-   notes; verify latest-manifest download and updater launch end to end.
+1. Perform a manual Windows update UX pass from a bridge build to `0.1.0-beta.1`, including slow
+   network, panel-close and SmartScreen behavior.
 2. Deploy the catalog proxy on a free tier and bind the real endpoint without exposing the Kakao
    key.
 3. Add explicit local correction/odd-result UX before enabling any improvement-data upload.
