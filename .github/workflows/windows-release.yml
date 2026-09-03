@@ -47,9 +47,13 @@ jobs:
             }
           }
 
-          $tagSha = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha' 2>$null
-          if ($LASTEXITCODE -eq 0 -and $tagSha -ne $env:GITHUB_SHA) {
-            throw "existing tag $tag points to $tagSha, not release commit $env:GITHUB_SHA"
+          $tagJson = gh api "repos/$env:GITHUB_REPOSITORY/git/matching-refs/tags/$tag"
+          if ($LASTEXITCODE -ne 0) { throw 'release tag refs could not be resolved' }
+          $tagMatch = @(
+            $tagJson | ConvertFrom-Json | Where-Object { $_.ref -eq "refs/tags/$tag" }
+          )
+          if ($tagMatch.Count -gt 0 -and $tagMatch[0].object.sha -ne $env:GITHUB_SHA) {
+            throw "existing tag $tag points to $($tagMatch[0].object.sha), not release commit $env:GITHUB_SHA"
           }
           "BOOKEATER_RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Install build dependencies
