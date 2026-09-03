@@ -64,14 +64,14 @@ reliable checklist by itself.
 - Windows installer compile, manifest hash contract and in-place upgrade E2E.
 - Version-gated GitHub Release workflow that publishes `BookEater-Setup.exe`, a matching
   `release-manifest.json` and the fixed prerelease-compatible `release-channel` manifest.
-- Public `v0.1.0-beta.2` Windows prerelease; packaged smoke/mutex, installer upgrade preservation,
+- Public `v0.1.0-beta.3` Windows prerelease; packaged smoke/mutex, installer upgrade preservation,
   public manifest and exact public installer SHA-256 validation all passed.
 - Deployed Cloudflare/Aladin catalog Worker and opt-in feedback backend foundation.
 
-## Implemented foundations but not fully player-connected
+## Implemented foundations but not fully enabled
 
-- The production Aladin catalog Worker is deployed and `resources/catalog_endpoint.txt` points to
-  it. A Windows release containing this endpoint still needs to be built and verified.
+- The production Aladin catalog Worker is deployed, `resources/catalog_endpoint.txt` points to it,
+  and the beta.3 Windows Release passed a live catalog contract check.
 - Feedback backend schema/API exists, but the desktop has no consent, correction/odd-result or
   deletion-request UI and therefore sends nothing.
 - Update downloads are hash-verified, but the installer is not Authenticode-signed; Windows may
@@ -98,7 +98,7 @@ reliable checklist by itself.
 
 1. Perform a manual Windows update UX pass from a bridge build to `0.1.0-beta.1`, including slow
    network, panel-close and SmartScreen behavior.
-2. Package and verify the deployed Cloudflare/Aladin catalog endpoint without exposing its TTB
-   key.
+2. Perform a manual Windows recommendation-panel pass against the deployed Cloudflare/Aladin
+   catalog endpoint.
 3. Add explicit local correction/odd-result UX before enabling any improvement-data upload.
 4. Complete multi-monitor/manual Windows playtests.
