@@ -20,8 +20,21 @@ def test_working_palette_is_stable():
 
 def test_geulssial_first_milestone_has_idle_and_eat():
     assert GEULSSIAL_ANIMATIONS['idle'].frame_count == 4
+    assert GEULSSIAL_ANIMATIONS['idle'].frame_ms == 420
     assert GEULSSIAL_ANIMATIONS['eat'].frame_count == 6
     assert GEULSSIAL_ANIMATIONS['eat'].loop is False
+
+
+def test_all_requested_care_and_physics_poses_are_replaceable():
+    expected = {
+        'snack': 6,
+        'delicious': 3,
+        'play': 4,
+        'wash': 4,
+        'bump': 3,
+        'drop': 2,
+    }
+    assert {state: GEULSSIAL_ANIMATIONS[state].frame_count for state in expected} == expected
 
 
 def test_asset_filenames_are_predictable():

@@ -19,6 +19,12 @@ PET_STATES = (
     'sleep',
     'talk',
     'spit_memory',
+    'snack',
+    'delicious',
+    'play',
+    'wash',
+    'bump',
+    'drop',
 )
 
 
@@ -48,13 +54,23 @@ class AnimationSpec:
 
 
 GEULSSIAL_ANIMATIONS = {
-    'idle': AnimationSpec('idle', 4, 170, True),
+    # Four deliberately slow frames form one 1.68-second breathing cycle. Artwork should keep
+    # feet/shadow on one baseline and move/squash only the torso so the pet does not float.
+    'idle': AnimationSpec('idle', 4, 420, True),
     'eat': AnimationSpec('eat', 6, 115, False),
     'walk': AnimationSpec('walk', 4, 130, True),
     'read': AnimationSpec('read', 3, 220, True),
     'sleep': AnimationSpec('sleep', 3, 420, True),
     'talk': AnimationSpec('talk', 2, 180, True),
     'spit_memory': AnimationSpec('spit_memory', 4, 145, False),
+    # These states are optional in packaged art. Missing sets use the safe procedural fallback,
+    # while a complete local override can replace each action without changing application code.
+    'snack': AnimationSpec('snack', 6, 120, False),
+    'delicious': AnimationSpec('delicious', 3, 260, False),
+    'play': AnimationSpec('play', 4, 150, True),
+    'wash': AnimationSpec('wash', 4, 190, True),
+    'bump': AnimationSpec('bump', 3, 130, False),
+    'drop': AnimationSpec('drop', 2, 120, True),
 }
 
 

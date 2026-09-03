@@ -2,8 +2,11 @@ from __future__ import annotations
 
 """Desktop-pet V6: optional first-meeting drop animation and per-user Windows autostart."""
 
+import os
 import queue
+import sys
 import threading
+import webbrowser
 
 from .pet_behavior import PetMotion
 from .pet_window_v5 import DesktopPetWindowV5
@@ -15,6 +18,7 @@ from .services.update_install import (
     launch_verified_installer,
 )
 from .services.windows_autostart import can_enable_autostart, is_autostart_enabled, set_autostart
+from .pet_sprite import default_override_root
 from .version import APP_VERSION
 
 
@@ -83,7 +87,7 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
 
     def open_settings_panel(self) -> None:
         tk, ttk = self.tk, self.ttk
-        win = self._new_panel('설정', '470x540')
+        win = self._new_panel('설정', '470x600')
         body = ttk.Frame(win, padding=18)
         body.pack(fill='both', expand=True)
         ttk.Label(body, text='설정', font=('', 18, 'bold')).pack(anchor='w')
@@ -145,6 +149,20 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
             ttk.Radiobutton(
                 size_row, text=label, value=value, variable=size_var, command=change_size,
             ).pack(side='left', padx=(0, 8))
+
+        def open_art_folder() -> None:
+            folder = default_override_root(self.runtime.data_dir)
+            try:
+                folder.mkdir(parents=True, exist_ok=True)
+                if sys.platform.startswith('win'):
+                    os.startfile(folder)  # type: ignore[attr-defined]
+                else:
+                    webbrowser.open(folder.as_uri())
+                msg.set('이미지 교체 폴더를 열었어요. 완성된 프레임 세트를 넣고 앱을 다시 실행해 주세요.')
+            except Exception:
+                msg.set(f'폴더를 열지 못했어요. 직접 열어 주세요: {folder}')
+
+        ttk.Button(body, text='이미지 교체 폴더 열기', command=open_art_folder).pack(anchor='w', pady=(12, 0))
 
         ttk.Separator(body).pack(fill='x', pady=(18, 10))
         update_row = ttk.Frame(body)

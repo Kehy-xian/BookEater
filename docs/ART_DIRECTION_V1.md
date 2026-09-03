@@ -71,10 +71,12 @@ Approximately **24–28 unique frames** total depending on reuse.
 
 ### Technical sprite format
 
-- Authoring canvas: 96×96 px per frame (or 192×192 source rendered down cleanly).
-- Transparent PNG.
-- Keep character feet aligned to a shared baseline.
-- No baked-in shadow; desktop renderer draws shadow separately so it can adapt to scale.
+- Runtime canvas: exactly 190×190 px per frame, 8-bit RGBA PNG. Larger source art may be authored
+  at an integer multiple and downscaled once to 190×190 for export.
+- Unused pixels must be transparent; do not export a white or checkerboard background.
+- Keep character feet aligned to a shared baseline. For idle breathing, keep feet and shadow fixed
+  and move/squash only the torso in a subtle `0, -1, -3, -1 px` four-frame cycle.
+- A shadow may be included when it is identical and fixed across all frames of that state.
 - Naming: `geulssial_idle_00.png`, `geulssial_eat_00.png`, etc.
 - Runtime must retain a vector fallback if sprite assets are missing/corrupt.
 

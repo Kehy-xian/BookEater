@@ -15,7 +15,7 @@ from typing import Callable
 
 from .book_choices import book_choice_map
 from .game.loop import FeedOutcome
-from .pet_art import PetPalette
+from .pet_art import GEULSSIAL_ANIMATIONS, PetPalette
 from .pet_behavior import PetMotion, RoamPlanner, WorkArea
 from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime
 
@@ -65,6 +65,8 @@ class DesktopPetWindow:
         self._busy = False
         self._tray_icon = None
         self._eat_frames = 0
+        self._delicious_frames = 0
+        self._show_delicious_after_eat = False
         self._result_queue: queue.Queue[tuple[str, object]] = queue.Queue()
         self._book_display_to_id: dict[str, str] = {}
 
@@ -319,13 +321,27 @@ class DesktopPetWindow:
         if self._pet_state == 'eat':
             self._eat_frames -= 1
             if self._eat_frames <= 0 and not self._busy:
+                if self._show_delicious_after_eat:
+                    self._show_delicious_after_eat = False
+                    self._pet_state = 'delicious'
+                    self._delicious_frames = GEULSSIAL_ANIMATIONS['delicious'].frame_count
+                else:
+                    self._pet_state = 'idle'
+                    self._motion = PetMotion(
+                        self._motion.x, self._motion.y,
+                        state='idle', facing=self._motion.facing, hold_ticks=8,
+                    )
+        elif self._pet_state == 'delicious' and self._delicious_frames > 0:
+            self._delicious_frames -= 1
+            if self._delicious_frames <= 0:
                 self._pet_state = 'idle'
                 self._motion = PetMotion(
                     self._motion.x, self._motion.y,
                     state='idle', facing=self._motion.facing, hold_ticks=8,
                 )
         self._draw()
-        self.root.after(115 if self._pet_state == 'eat' else 150, self._tick)
+        spec = GEULSSIAL_ANIMATIONS.get(self._pet_state)
+        self.root.after(spec.frame_ms if spec is not None else 150, self._tick)
 
     def _draw(self) -> None:
         """Vector fallback renderer used until approved PNG sprite frames are integrated."""
@@ -646,14 +662,17 @@ class DesktopPetWindow:
                         self._busy = False
                         self._pet_state = 'eat'
                         self._eat_frames = 6
+                        self._show_delicious_after_eat = True
                 elif kind == 'recovery':
                     outcomes = payload if isinstance(payload, list) else []
                     if any(isinstance(x, FeedOutcome) and x.status == 'fed' for x in outcomes):
                         self._pet_state = 'eat'
                         self._eat_frames = 5
+                        self._show_delicious_after_eat = True
                 elif kind == 'error':
                     self._busy = False
                     self._pet_state = 'idle'
+                    self._show_delicious_after_eat = False
                 elif kind == 'tray_restore':
                     self._restore_from_tray()
                 elif kind == 'tray_exit':

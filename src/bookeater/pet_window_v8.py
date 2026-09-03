@@ -283,28 +283,30 @@ class DesktopPetWindowV8(DesktopPetWindowV7):
 
         self._refresh_visual_identity()
         action_state = self._pet_state
+        custom_action = action_state in {'snack', 'delicious', 'play', 'wash', 'bump', 'drop'}
         sprite_state = action_state
-        if sprite_state == 'drop':
-            sprite_state = 'idle'
-        elif sprite_state == 'snack':
-            sprite_state = 'eat'
-        elif sprite_state in {'delicious', 'play', 'wash', 'bump'}:
-            sprite_state = 'idle'
-
+        frames = None
         if sprite_state in GEULSSIAL_ANIMATIONS:
-            frames = self._sprite_cache.frames(
-                self._visual_form_id, sprite_state, scale=self._pet_scale,
+            frames = self._sprite_cache.frames(self._visual_form_id, sprite_state, scale=self._pet_scale)
+        using_custom_action_frames = bool(custom_action and frames)
+        if frames is None and custom_action:
+            sprite_state = 'eat' if action_state == 'snack' else 'idle'
+            frames = self._sprite_cache.frames(self._visual_form_id, sprite_state, scale=self._pet_scale)
+
+        if frames:
+            c = self.canvas
+            c.delete('all')
+            image = frames[self._frame % len(frames)]
+            bounce = (
+                (0, -7, -13, -5)[self._frame % 4]
+                if action_state == 'play' and not using_custom_action_frames else 0
             )
-            if frames:
-                c = self.canvas
-                c.delete('all')
-                image = frames[self._frame % len(frames)]
-                bounce = (0, -7, -13, -5)[self._frame % 4] if action_state == 'play' else 0
-                c.create_image(95, 100 + bounce, image=image, anchor='center')
-                self._draw_dialogue_overlay()
+            c.create_image(95, 100 + bounce, image=image, anchor='center')
+            self._draw_dialogue_overlay()
+            if not using_custom_action_frames:
                 self._draw_care_overlay(action_state)
-                self._scale_canvas_items()
-                return
+            self._scale_canvas_items()
+            return
 
         # Missing/corrupt/incomplete PNGs never crash or reveal unapproved final-form art.
         self._draw_route_fallback(sprite_state)

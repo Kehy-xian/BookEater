@@ -46,15 +46,18 @@ reliable checklist by itself.
 ### Player experience
 
 - Transparent always-on-top draggable Windows pet with floor roaming, edge bump and drag-drop fall.
-- Sprite IDLE/EAT/WALK/READ/SLEEP/TALK/SPIT_MEMORY states and lineage-safe vector fallback.
+- Sprite IDLE/EAT/WALK/READ/SLEEP/TALK/SPIT_MEMORY plus optional
+  SNACK/DELICIOUS/PLAY/WASH/BUMP/DROP replacement states and lineage-safe fallback. Every major
+  visible action can be replaced independently with a complete validated PNG set.
 - Feed panel, practical bookshelf/timeline, current-monster profile and lineage-tree encyclopedia.
 - Collision-safe book selectors: duplicate title/author labels use publisher, ISBN or a stable
   short local token and never overwrite another book ID in the UI mapping.
 - Local memory resurfacing and broad personality dialogue.
 - Optional launch drop animation, 100/75/50% size controls, tray home/restore and per-user Windows
   auto-start, default OFF.
-- Care state, distinct snack/delicious/play/wash poses and one minimal letter-catching mini-game;
-  bond changes greeting and talk frequency but never the reading-derived evolution lineage.
+- Care state, distinct snack/delicious/play/wash poses, post-feed delicious reaction and one
+  minimal letter-catching mini-game; bond changes greeting and talk frequency but never the
+  reading-derived evolution lineage.
 - Real-catalog recommendation client, explicit cold-start explanation, local taste/expansion ranking
   and confirmed wishlist save.
 - Catalog-first ISBN/title/author book registration with edition selection and manual fallback.
@@ -97,14 +100,16 @@ reliable checklist by itself.
 
 1. Beta.4 settings/recommendation/book-search/tray/scale flows need real Windows usability testing
    beyond headless CI, including slow network and panel-close behavior.
-2. Catalog and feedback endpoints need rate-limit, abuse and retention-policy review before public
+2. User-supplied art is validated and safely activated, but all replacement designs still require
+   an actual 190×190 desktop-scale visual review before inclusion in a public installer.
+3. Catalog and feedback endpoints need rate-limit, abuse and retention-policy review before public
    deployment.
 
 ## Next order
 
-1. Perform a manual Windows update UX pass from a bridge build to `0.1.0-beta.1`, including slow
-   network, panel-close and SmartScreen behavior.
-2. Perform a manual Windows recommendation-panel pass against the deployed Cloudflare/Aladin
-   catalog endpoint.
-3. Add explicit local correction/odd-result UX before enabling any improvement-data upload.
-4. Complete multi-monitor/manual Windows playtests.
+1. Run the full GitHub Windows package/mutex and installer version-upgrade regression for beta.4.
+2. Redeploy the Cloudflare Worker so live ISBN-vs-keyword query routing matches this branch.
+3. Publish the beta.4 Windows prerelease only after both regressions and live Worker checks pass.
+4. Perform a manual Windows UI pass for animation timing, tray, scale, small panels and slow network.
+5. Add explicit local correction/odd-result UX before enabling any improvement-data upload.
+6. Complete multi-monitor/manual Windows playtests.

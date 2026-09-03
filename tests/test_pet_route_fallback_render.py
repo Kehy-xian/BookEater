@@ -21,6 +21,15 @@ class FakeCanvas:
         raise AttributeError(name)
 
 
+class FakeSpriteCache:
+    def __init__(self, states):
+        self.states = set(states)
+
+    def frames(self, _form_id, state, *, scale=1.0):
+        del scale
+        return (object(), object()) if state in self.states else None
+
+
 def make_pet(form_id: str, state: str):
     pet = object.__new__(DesktopPetWindowV8)
     pet.canvas = FakeCanvas()
@@ -48,3 +57,29 @@ def test_unapproved_final_form_draws_approved_parent_shape_without_error():
         pet = make_pet(form_id, 'idle')
         pet._draw_route_fallback('idle')
         assert pet.canvas.calls
+
+
+def test_complete_custom_action_frames_replace_procedural_action_overlay():
+    pet = make_pet('starter', 'wash')
+    pet._sprite_cache = FakeSpriteCache({'wash', 'idle'})
+    pet._pet_scale = 1.0
+    pet._refresh_visual_identity = lambda: None
+    pet._scale_canvas_items = lambda: None
+    overlays = []
+    pet._draw_care_overlay = overlays.append
+    pet._draw()
+    assert any(name == 'create_image' for name, _args, _kwargs in pet.canvas.calls)
+    assert overlays == []
+
+
+def test_missing_custom_action_frames_keep_safe_idle_and_overlay_fallback():
+    pet = make_pet('starter', 'wash')
+    pet._sprite_cache = FakeSpriteCache({'idle'})
+    pet._pet_scale = 1.0
+    pet._refresh_visual_identity = lambda: None
+    pet._scale_canvas_items = lambda: None
+    overlays = []
+    pet._draw_care_overlay = overlays.append
+    pet._draw()
+    assert any(name == 'create_image' for name, _args, _kwargs in pet.canvas.calls)
+    assert overlays == ['wash']
