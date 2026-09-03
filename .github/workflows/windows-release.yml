@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - 'release-v*'
 
 permissions:
   contents: write
@@ -19,14 +21,20 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - name: Verify release tag matches application version
+      - name: Resolve and verify release tag
         shell: pwsh
         run: |
           $version = python -c "import sys; sys.path.insert(0, 'src'); from bookeater.version import APP_VERSION; print(APP_VERSION)"
           $expected = "v$version"
-          if ($env:GITHUB_REF_NAME -ne $expected) {
-            throw "release tag $env:GITHUB_REF_NAME does not match application version $expected"
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $tag = $env:GITHUB_REF_NAME
+          } elseif ($env:GITHUB_REF_NAME -like 'release-v*') {
+            $tag = $env:GITHUB_REF_NAME.Substring(8)
+          } else {
+            throw "unsupported release ref $env:GITHUB_REF"
           }
+          if ($tag -ne $expected) { throw "release ref $tag does not match application version $expected" }
+          "BOOKEATER_RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Install build dependencies
         run: python -m pip install -r requirements-build.txt
       - name: Expand and validate production sprites
@@ -64,7 +72,7 @@ jobs:
         shell: pwsh
         run: |
           $version = python -c "import sys; sys.path.insert(0, 'src'); from bookeater.version import APP_VERSION; print(APP_VERSION)"
-          $assetUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:GITHUB_REF_NAME/BookEater-Setup.exe"
+          $assetUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:BOOKEATER_RELEASE_TAG/BookEater-Setup.exe"
           python tools/build_update_manifest.py `
             --installer 'dist\installer\BookEater-Setup.exe' `
             --url $assetUrl `
@@ -77,21 +85,24 @@ jobs:
       - name: Publish or refresh GitHub Release assets
         shell: pwsh
         run: |
-          $prerelease = $env:GITHUB_REF_NAME -match '-'
-          gh release view $env:GITHUB_REF_NAME *> $null
+          $prerelease = $env:BOOKEATER_RELEASE_TAG -match '-'
+          gh release view $env:BOOKEATER_RELEASE_TAG *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $env:GITHUB_REF_NAME `
+            gh release upload $env:BOOKEATER_RELEASE_TAG `
               'dist\installer\BookEater-Setup.exe' `
               'dist\installer\release-manifest.json' `
               --clobber
           } else {
             $releaseArgs = @(
-              'release','create',$env:GITHUB_REF_NAME,
+              'release','create',$env:BOOKEATER_RELEASE_TAG,
               'dist\installer\BookEater-Setup.exe',
               'dist\installer\release-manifest.json',
-              '--title',"책먹는 몬스터 $env:GITHUB_REF_NAME"
+              '--title',"책먹는 몬스터 $env:BOOKEATER_RELEASE_TAG"
             )
-            $version = $env:GITHUB_REF_NAME.TrimStart('v')
+            if ($env:GITHUB_REF_TYPE -ne 'tag') {
+              $releaseArgs += @('--target', $env:GITHUB_SHA)
+            }
+            $version = $env:BOOKEATER_RELEASE_TAG.TrimStart('v')
             $notesPath = "docs/releases/$version.md"
             if (Test-Path $notesPath) {
               $releaseArgs += @('--notes-file', $notesPath)
@@ -118,7 +129,7 @@ jobs:
           $existingJson = gh api "$endpoint`?ref=$branch" 2>$null
           $existing = $LASTEXITCODE -eq 0
           $body = @{
-            message = "Publish update manifest for $env:GITHUB_REF_NAME"
+            message = "Publish update manifest for $env:BOOKEATER_RELEASE_TAG"
             content = [Convert]::ToBase64String(
               [IO.File]::ReadAllBytes('dist\installer\release-manifest.json')
             )
