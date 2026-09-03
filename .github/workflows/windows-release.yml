@@ -89,9 +89,15 @@ jobs:
               'release','create',$env:GITHUB_REF_NAME,
               'dist\installer\BookEater-Setup.exe',
               'dist\installer\release-manifest.json',
-              '--title',"책먹는 몬스터 $env:GITHUB_REF_NAME",
-              '--generate-notes'
+              '--title',"책먹는 몬스터 $env:GITHUB_REF_NAME"
             )
+            $version = $env:GITHUB_REF_NAME.TrimStart('v')
+            $notesPath = "docs/releases/$version.md"
+            if (Test-Path $notesPath) {
+              $releaseArgs += @('--notes-file', $notesPath)
+            } else {
+              $releaseArgs += '--generate-notes'
+            }
             if ($prerelease) { $releaseArgs += '--prerelease' }
             & gh @releaseArgs
           }

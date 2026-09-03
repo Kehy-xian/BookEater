@@ -1,7 +1,8 @@
 # BookEater implementation status — 2026-09-02
 
-This file is the current repository-backed status. `PRODUCT_ROADMAP_V1.md` records the earlier
-product direction and is no longer a reliable checklist by itself.
+This file is the current repository-backed status. The current release candidate is
+`0.1.0-beta.1`. `PRODUCT_ROADMAP_V1.md` records the earlier product direction and is no longer a
+reliable checklist by itself.
 
 ## Product constraints that remain binding
 
