@@ -19,12 +19,20 @@ from bookeater.services.catalog import (
 
 
 class FakeResponse:
-    def __init__(self, payload: object, *, headers=None):
+    def __init__(self, payload: object, *, headers=None, final_url=None):
         self.data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
         self.headers = headers or {}
+        self.final_url = final_url
+        self.closed = False
 
     def read(self, limit: int):
         return self.data[:limit]
+
+    def geturl(self):
+        return self.final_url or 'https://catalog.example.com/result'
+
+    def close(self):
+        self.closed = True
 
 
 def test_catalog_requires_https_except_localhost():
@@ -57,8 +65,9 @@ def test_discovery_pool_sends_no_reading_or_growth_data_and_parses_only_real_boo
     assert books[0].detail_url == 'https://books.example/1'
     assert len(seen_urls) == 1
     url = seen_urls[0]
-    assert '/v1/catalog/pool' in url
-    assert 'limit=20' in url
+    assert '/v1/books/list' in url
+    assert 'type=Bestseller' in url
+    assert 'max_results=20' in url
     for secretish in ('사유', '탐구', '감정', '감각', 'stats', 'note', 'form_id'):
         assert secretish not in url
 
@@ -73,7 +82,51 @@ def test_search_sends_only_explicit_query():
     books = CatalogClient('https://catalog.example.com', opener=opener).search('우주 과학', limit=5)
     assert [b.title for b in books] == ['검색 결과']
     assert 'q=%EC%9A%B0%EC%A3%BC+%EA%B3%BC%ED%95%99' in seen['url']
-    assert 'limit=5' in seen['url']
+    assert '/v1/books/search' in seen['url']
+    assert 'max_results=5' in seen['url']
+
+
+def test_aladin_worker_payload_maps_to_real_book_candidate_and_closes_response():
+    response = FakeResponse({'items': [{
+        'isbn13': '9788931021295',
+        'title': '어린왕자',
+        'author': '생텍쥐페리',
+        'description': '실제 책 설명',
+        'link': 'https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=1&amp;partner=openAPI',
+        'cover_url': 'https://image.aladin.co.kr/cover.jpg',
+        'source': 'aladin',
+    }]})
+
+    books = CatalogClient(
+        'https://catalog.example.com',
+        opener=lambda request, timeout: response,
+    ).search('어린왕자', limit=3)
+
+    assert [book.source_id for book in books] == ['9788931021295']
+    assert books[0].detail_url.startswith('https://www.aladin.co.kr/')
+    assert '&amp;' not in books[0].detail_url
+    assert books[0].source == 'aladin'
+    assert response.closed is True
+
+
+def test_catalog_rejects_insecure_redirect_and_invalid_content_length():
+    with pytest.raises(CatalogUnavailable, match='HTTPS'):
+        CatalogClient(
+            'https://catalog.example.com',
+            opener=lambda request, timeout: FakeResponse(
+                {'items': []},
+                final_url='http://evil.example.com/catalog',
+            ),
+        ).search('책')
+
+    with pytest.raises(CatalogResponseError, match='Content-Length'):
+        CatalogClient(
+            'https://catalog.example.com',
+            opener=lambda request, timeout: FakeResponse(
+                {'items': []},
+                headers={'Content-Length': 'invalid'},
+            ),
+        ).search('책')
 
 
 def test_invalid_catalog_payload_never_becomes_fake_recommendations():
@@ -103,6 +156,12 @@ def test_release_can_read_public_endpoint_from_bundled_resource(tmp_path):
     client = configured_catalog_client({}, resources=resources)
     assert client is not None
     assert client.endpoint == 'https://catalog.bookeater.example'
+
+
+def test_bundled_release_uses_deployed_aladin_worker():
+    assert catalog_endpoint_from_env({}, resources=ROOT) == (
+        'https://bookeater-api.bookeater-kehy.workers.dev'
+    )
 
 
 def test_environment_endpoint_overrides_bundled_release_endpoint(tmp_path):

@@ -13,6 +13,7 @@ Endpoint selection is public configuration, not a credential:
 """
 
 from dataclasses import dataclass
+import html
 import json
 import os
 from pathlib import Path
@@ -97,7 +98,7 @@ def _append_query(url: str, **params: object) -> str:
 
 
 def _safe_url(value: Any) -> str | None:
-    text = str(value or '').strip()
+    text = html.unescape(str(value or '')).strip()
     if not text:
         return None
     parsed = urlparse(text)
@@ -116,31 +117,62 @@ class CatalogClient:
     def _get(self, path: str, **params: object) -> list[BookCandidate]:
         url = _append_query(f'{self.endpoint}/{path.lstrip("/")}', **params)
         request = Request(url, headers={'Accept': 'application/json', 'User-Agent': 'BookEater/desktop'})
+        response = None
         try:
             response = self.opener(request, timeout=max(1.0, float(self.timeout)))
+            geturl = getattr(response, 'geturl', None)
+            final_url = geturl() if callable(geturl) else url
+            _valid_endpoint(final_url or url)
             length = response.headers.get('Content-Length') if getattr(response, 'headers', None) else None
-            if length and int(length) > MAX_RESPONSE_BYTES:
-                raise CatalogResponseError('catalog response is too large')
+            if length is not None:
+                try:
+                    declared = int(length)
+                except (TypeError, ValueError) as exc:
+                    raise CatalogResponseError('catalog response has an invalid Content-Length') from exc
+                if declared < 0:
+                    raise CatalogResponseError('catalog response has an invalid Content-Length')
+                if declared > MAX_RESPONSE_BYTES:
+                    raise CatalogResponseError('catalog response is too large')
             raw = response.read(MAX_RESPONSE_BYTES + 1)
         except CatalogResponseError:
             raise
+        except CatalogUnavailable:
+            raise
         except Exception as exc:
             raise CatalogUnavailable('catalog request failed') from exc
+        finally:
+            close = getattr(response, 'close', None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    pass
         if len(raw) > MAX_RESPONSE_BYTES:
             raise CatalogResponseError('catalog response is too large')
         try:
             data = json.loads(raw.decode('utf-8'))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise CatalogResponseError('catalog returned invalid JSON') from exc
-        if not isinstance(data, dict) or not isinstance(data.get('books'), list):
-            raise CatalogResponseError('catalog response must contain books list')
+        if not isinstance(data, dict):
+            raise CatalogResponseError('catalog response must be an object')
+        raw_books = data.get('items')
+        if not isinstance(raw_books, list):
+            raw_books = data.get('books')
+        if not isinstance(raw_books, list):
+            raise CatalogResponseError('catalog response must contain items or books list')
 
         out: list[BookCandidate] = []
         seen: set[str] = set()
-        for raw_book in data['books']:
+        for raw_book in raw_books:
             if not isinstance(raw_book, dict):
                 continue
-            source_id = str(raw_book.get('id') or raw_book.get('source_id') or '').strip()
+            source_id = str(
+                raw_book.get('id')
+                or raw_book.get('source_id')
+                or raw_book.get('isbn13')
+                or raw_book.get('isbn')
+                or ''
+            ).strip()
             title = str(raw_book.get('title') or '').strip()
             if not source_id or not title or source_id in seen:
                 continue
@@ -151,7 +183,7 @@ class CatalogClient:
                     title=title,
                     author=str(raw_book.get('author') or '').strip(),
                     description=str(raw_book.get('description') or '').strip(),
-                    detail_url=_safe_url(raw_book.get('detail_url')),
+                    detail_url=_safe_url(raw_book.get('detail_url') or raw_book.get('link')),
                     cover_url=_safe_url(raw_book.get('cover_url')),
                     source=str(raw_book.get('source') or 'catalog').strip() or 'catalog',
                 ))
@@ -160,13 +192,17 @@ class CatalogClient:
         return out
 
     def discovery_pool(self, *, limit: int = 40) -> list[BookCandidate]:
-        return self._get('v1/catalog/pool', limit=max(1, min(100, int(limit))))
+        return self._get(
+            'v1/books/list',
+            type='Bestseller',
+            max_results=max(1, min(20, int(limit))),
+        )
 
     def search(self, query: str, *, limit: int = 30) -> list[BookCandidate]:
         q = str(query or '').strip()
         if not q:
             return []
-        return self._get('v1/catalog/search', q=q, limit=max(1, min(100, int(limit))))
+        return self._get('v1/books/search', q=q, max_results=max(1, min(20, int(limit))))
 
 
 def configured_catalog_client(

@@ -199,7 +199,7 @@ def provider_from_env(environ: dict[str, str] | None = None) -> KakaoBookProvide
 
 
 def _limit(values: dict[str, list[str]], default: int) -> int:
-    raw = (values.get('limit') or [str(default)])[0]
+    raw = (values.get('limit') or values.get('max_results') or [str(default)])[0]
     try:
         return max(1, min(MAX_PUBLIC_LIMIT, int(raw)))
     except (TypeError, ValueError):
@@ -236,13 +236,13 @@ class CatalogHandler(BaseHTTPRequestHandler):
 
         params = parse_qs(parsed.query, keep_blank_values=True)
         try:
-            if parsed.path == '/v1/catalog/search':
+            if parsed.path in {'/v1/catalog/search', '/v1/books/search'}:
                 query = (params.get('q') or [''])[0].strip()
                 if not query:
                     self._send(HTTPStatus.BAD_REQUEST, {'error': 'query_required'})
                     return
                 books = provider.search(query, limit=_limit(params, 30))
-            elif parsed.path == '/v1/catalog/pool':
+            elif parsed.path in {'/v1/catalog/pool', '/v1/books/list'}:
                 books = provider.discovery_pool(limit=_limit(params, 40))
             else:
                 self._send(HTTPStatus.NOT_FOUND, {'error': 'not_found'})

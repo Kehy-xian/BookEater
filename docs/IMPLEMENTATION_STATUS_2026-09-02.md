@@ -64,13 +64,14 @@ reliable checklist by itself.
 - Windows installer compile, manifest hash contract and in-place upgrade E2E.
 - Version-gated GitHub Release workflow that publishes `BookEater-Setup.exe`, a matching
   `release-manifest.json` and the fixed prerelease-compatible `release-channel` manifest.
-- Public `v0.1.0-beta.1` Windows prerelease; packaged smoke/mutex, installer upgrade preservation,
+- Public `v0.1.0-beta.2` Windows prerelease; packaged smoke/mutex, installer upgrade preservation,
   public manifest and exact public installer SHA-256 validation all passed.
-- Stateless Kakao catalog proxy and Cloudflare opt-in feedback backend foundations.
+- Deployed Cloudflare/Aladin catalog Worker and opt-in feedback backend foundation.
 
-## Implemented foundations but not production-connected
+## Implemented foundations but not fully player-connected
 
-- Catalog proxy code exists, but `resources/catalog_endpoint.txt` has no deployed public endpoint.
+- The production Aladin catalog Worker is deployed and `resources/catalog_endpoint.txt` points to
+  it. A Windows release containing this endpoint still needs to be built and verified.
 - Feedback backend schema/API exists, but the desktop has no consent, correction/odd-result or
   deletion-request UI and therefore sends nothing.
 - Update downloads are hash-verified, but the installer is not Authenticode-signed; Windows may
@@ -83,7 +84,6 @@ reliable checklist by itself.
 - Deterministic quiz mode based on the user's own notes.
 - Full opt-in improvement-data lifecycle: clear consent text/version, local correction storage,
   redaction preview, upload queue/retry and deletion request.
-- A deployed public catalog endpoint and production secret configuration.
 - Authenticode signing and signed-manifest verification beyond HTTPS plus exact SHA-256.
 - Multi-monitor-specific work-area handling; current roaming uses the primary Windows work area.
 
@@ -98,7 +98,7 @@ reliable checklist by itself.
 
 1. Perform a manual Windows update UX pass from a bridge build to `0.1.0-beta.1`, including slow
    network, panel-close and SmartScreen behavior.
-2. Deploy the catalog proxy on a free tier and bind the real endpoint without exposing the Kakao
+2. Package and verify the deployed Cloudflare/Aladin catalog endpoint without exposing its TTB
    key.
 3. Add explicit local correction/odd-result UX before enabling any improvement-data upload.
 4. Complete multi-monitor/manual Windows playtests.

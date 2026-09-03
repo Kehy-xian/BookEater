@@ -1,2 +1,3 @@
 # Release builds may replace the next line with the deployed HTTPS BookEater catalog proxy URL.
 # Example: https://catalog.example.com
+https://bookeater-api.bookeater-kehy.workers.dev
