@@ -1,6 +1,6 @@
 {
-  "latest_version": "0.1.0-beta.1",
-  "installer_url": "https://github.com/Kehy-xian/BookEater/releases/download/v0.1.0-beta.1/BookEater-Setup.exe",
-  "sha256": "20733f9917d86553a71239a969e83a822dd555bab37e5b5ad7617e9a9722fe65",
-  "notes": "책먹는 몬스터 0.1.0-beta.1"
+  "latest_version": "0.1.0-beta.2",
+  "installer_url": "https://github.com/Kehy-xian/BookEater/releases/download/v0.1.0-beta.2/BookEater-Setup.exe",
+  "sha256": "e7190ad636c3a526233aca0517c1d4e87db3dd08f4f27dbf8c800088386eabaa",
+  "notes": "책먹는 몬스터 0.1.0-beta.2"
 }
