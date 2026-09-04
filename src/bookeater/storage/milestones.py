@@ -69,9 +69,17 @@ class MonsterMilestoneStore:
             ).fetchone()
             if row is None:
                 raise RuntimeError('monster milestone singleton is missing')
+            try:
+                cycle = con.execute(
+                    'SELECT start_entry_rowid FROM monster_cycle WHERE singleton=1'
+                ).fetchone()
+            except sqlite3.OperationalError:
+                cycle = None
+            marker = int(cycle['start_entry_rowid']) if cycle is not None else 0
             first = con.execute(
                 "SELECT MIN(fed_at) AS first_fed_at FROM reading_entries "
-                "WHERE status='fed' AND fed_at IS NOT NULL"
+                "WHERE rowid>? AND status='fed' AND fed_at IS NOT NULL",
+                (marker,),
             ).fetchone()
             return MonsterMilestones(
                 met_at=str(row['met_at']),

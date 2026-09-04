@@ -68,6 +68,25 @@ _TRAIT_LINES = {
     '어둠': ('조용하고 어두운 장면일수록 오래 남을 때가 있어.',),
 }
 
+_RETURN_LINES = {
+    'short': (
+        '오랜만이야. 다시 만나서 반가워!',
+        '며칠 안 보이더니, 어디 다녀왔어?',
+        '책 냄새가 나서 네가 온 줄 알았어.',
+    ),
+    'long': (
+        '정말 오랜만이야! 네가 다시 올 줄 알고 기다렸어.',
+        '한동안 혼자라 조금 외로웠어. 그래도 다시 와 줘서 기뻐!',
+        '오래 못 만나서 네 이야기가 많이 궁금했어.',
+        '혹시 나를 잊은 건 아닐까 걱정했어. 돌아왔구나!',
+    ),
+    'low': (
+        '오랜만…',
+        '다시 왔네.',
+        '조금 외로웠어.',
+    ),
+}
+
 
 def _dominant_trait(stats: Mapping[str, float] | None) -> str | None:
     candidates = []
@@ -117,11 +136,18 @@ def greeting_line(
     *,
     entry_count: int = 0,
     stats: Mapping[str, float] | None = None,
+    away_days: int = 0,
     rng: random.Random | None = None,
 ) -> str:
     """A relationship-aware launch greeting whose broad voice still follows lineage."""
     rng = rng or random.Random()
     bond = max(0, min(100, int(bond)))
+    away_days = max(0, int(away_days))
+    if away_days >= 3:
+        if bond < 25:
+            return rng.choice(_RETURN_LINES['low'])
+        group = 'long' if away_days >= 14 else 'short'
+        return rng.choice(_RETURN_LINES[group])
     if bond >= 65:
         prefix = rng.choice(('다시 만나서 반가워!', '기다리고 있었어!'))
     elif bond >= 25:

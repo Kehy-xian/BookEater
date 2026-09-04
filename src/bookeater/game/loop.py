@@ -8,7 +8,7 @@ reason strings cross this boundary.
 """
 
 from dataclasses import dataclass
-from typing import Any, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 from .evolution import resolve_evolution
 from .growth_route_resolver import GrowthRouteDecision, resolve_growth_route
@@ -116,11 +116,13 @@ class ReadingFeedService:
         analyzer: Analyzer,
         *,
         encyclopedia: Encyclopedia | None = None,
+        growth_locked: Callable[[], bool] | None = None,
         max_revision_retries: int = 5,
     ):
         self.store = store
         self.analyzer = analyzer
         self.encyclopedia = encyclopedia
+        self.growth_locked = growth_locked or (lambda: False)
         self.max_revision_retries = max(1, int(max_revision_retries))
 
     @staticmethod
@@ -153,6 +155,31 @@ class ReadingFeedService:
             if cached is not None:
                 self._unlock_lineage(self.store.load_state().form_id)
                 return cached
+
+        # A fully-grown creature can keep receiving reading records, but its established genetics
+        # must remain frozen until the player begins a new creature cycle.
+        if self.growth_locked():
+            for _ in range(self.max_revision_retries):
+                state = self.store.load_state()
+                form = get_growth_form(state.form_id)
+                decision = GrowthRouteDecision(state.form_id, form.tier, False, 'completed growth is locked')
+                view = route_public_growth_view(decision, state.stats, previous_form=state.form_id)
+                outcome = FeedOutcome(note.feed_id, 'fed', generic_feed_line(note.feed_id), view)
+                try:
+                    committed = self.store.commit_fed(
+                        feed_id=note.feed_id, expected_revision=state.revision,
+                        entry_count=state.entry_count, current_base=state.current_base,
+                        stage=state.stage, species=state.species, stats=state.stats,
+                        public_payload=outcome.to_public_dict(), model_version=None,
+                        nutrition_policy=NUTRITION_POLICY_VERSION, form_id=state.form_id,
+                        recent_stats=state.recent_stats,
+                    )
+                except RevisionConflict:
+                    continue
+                cached = outcome_from_public_dict(committed)
+                return cached if cached is not None else outcome
+            self.store.mark_pending_error(note.feed_id, 'revision_conflict')
+            return self._pending(note.feed_id)
 
         try:
             raw = self.analyzer.analyze(note.note_text)

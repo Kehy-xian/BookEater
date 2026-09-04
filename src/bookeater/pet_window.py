@@ -759,6 +759,10 @@ class DesktopPetWindow:
                 pass
         threading.Thread(target=work, name='bookeater-pet-recovery', daemon=True).start()
 
+    def _after_feed_processed(self, outcome: FeedOutcome) -> None:
+        """Extension hook for post-feed presentation such as evolution ceremonies."""
+        return
+
     def _poll_results(self) -> None:
         try:
             while True:
@@ -770,12 +774,16 @@ class DesktopPetWindow:
                         self._pet_state = 'eat'
                         self._eat_frames = 6
                         self._show_delicious_after_eat = True
+                        self._after_feed_processed(outcome)
                 elif kind == 'recovery':
                     outcomes = payload if isinstance(payload, list) else []
                     if any(isinstance(x, FeedOutcome) and x.status == 'fed' for x in outcomes):
                         self._pet_state = 'eat'
                         self._eat_frames = 5
                         self._show_delicious_after_eat = True
+                        for outcome in outcomes:
+                            if isinstance(outcome, FeedOutcome) and outcome.status == 'fed':
+                                self._after_feed_processed(outcome)
                 elif kind == 'error':
                     self._busy = False
                     self._pet_state = 'idle'

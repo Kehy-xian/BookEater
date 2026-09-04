@@ -41,6 +41,13 @@ def test_greeting_changes_with_bond():
     assert any(word in high for word in ('반가워', '기다리고'))
 
 
+def test_long_absence_uses_return_greeting_and_respects_low_bond_voice():
+    low = greeting_line('starter', 0, away_days=20, rng=random.Random(2))
+    close = greeting_line('route_a1', 90, away_days=20, rng=random.Random(2))
+    assert low in {'오랜만…', '다시 왔네.', '조금 외로웠어.'}
+    assert any(word in close for word in ('오랜만', '외로웠', '기다렸', '걱정했'))
+
+
 def test_low_bond_lines_are_short_and_high_bond_lines_are_more_expressive():
     low = {choose_ambient_line('route_a1', 50, bond=0, rng=random.Random(seed)) for seed in range(20)}
     high = {choose_ambient_line('route_a1', 50, bond=100, rng=random.Random(seed)) for seed in range(20)}

@@ -15,7 +15,7 @@ import sys
 import threading
 from typing import Any
 
-from .game.growth_routes import lineage_path
+from .game.growth_routes import get_growth_form, lineage_path
 from .game.loop import ReadingFeedService
 from .services.version_backup import VersionBackupError, mark_version_success, prepare_version_transition
 from .storage.sqlite_store import SQLiteGameStore
@@ -25,6 +25,7 @@ from .storage.encyclopedia import MonsterEncyclopediaStore
 from .storage.settings import AppSettingsStore
 from .storage.care import MonsterCareStore
 from .storage.draft import ReadingDraftStore
+from .storage.memoir import MonsterMemoirStore
 from .version import APP_VERSION
 
 APP_DIR_NAME = 'BookEater'
@@ -125,6 +126,7 @@ class BookEaterRuntime:
     settings: AppSettingsStore
     care: MonsterCareStore
     drafts: ReadingDraftStore
+    memoirs: MonsterMemoirStore
     analyzer: LazyLocalAnalyzer
     feed_service: ReadingFeedService
 
@@ -160,6 +162,7 @@ def bootstrap_runtime(
         settings = AppSettingsStore(db_path)
         care = MonsterCareStore(db_path)
         drafts = ReadingDraftStore(db_path)
+        memoirs = MonsterMemoirStore(db_path)
 
         for form_id in lineage_path(store.load_state().form_id):
             encyclopedia.unlock(form_id)
@@ -171,7 +174,14 @@ def bootstrap_runtime(
         raise RuntimeStartupError('local BookEater data could not be opened safely') from exc
 
     analyzer = LazyLocalAnalyzer(model_dir)
-    service = ReadingFeedService(store, analyzer, encyclopedia=encyclopedia)
+    service = ReadingFeedService(
+        store, analyzer, encyclopedia=encyclopedia,
+        growth_locked=lambda: (
+            settings.get_bool('growth_locked', False)
+            or get_growth_form(store.load_state().form_id).tier >= 3
+        ),
+    )
     return BookEaterRuntime(
-        data, db_path, model_dir, store, journal, milestones, encyclopedia, settings, care, drafts, analyzer, service
+        data, db_path, model_dir, store, journal, milestones, encyclopedia, settings, care, drafts,
+        memoirs, analyzer, service
     )

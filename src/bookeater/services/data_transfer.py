@@ -76,6 +76,17 @@ def _collect_payload(database_path: str | Path) -> dict[str, Any]:
         ).fetchone()
         if state is None or milestone is None or care is None:
             raise RuntimeError('profile singleton missing')
+        cycle_row = con.execute(
+            'SELECT started_at,start_entry_rowid FROM monster_cycle WHERE singleton=1'
+        ).fetchone()
+        cycle_data = dict(cycle_row)
+        marker = max(0, int(cycle_data.get('start_entry_rowid', 0)))
+        marker_count = con.execute(
+            'SELECT COUNT(*) AS n FROM reading_entries WHERE rowid<=?', (marker,)
+        ).fetchone()
+        # Seed files rebuild SQLite rowids. Store the equivalent ordered-record count rather than
+        # a database-specific rowid so cycle boundaries survive export/import and deleted rows.
+        cycle_data['start_entry_rowid'] = int(marker_count['n']) if marker_count else 0
         payload = {
             'monster_state': dict(state),
             'books': _rows(con, 'SELECT book_id,title,author,status,isbn13,publisher,cover_url,source,created_at,updated_at,last_read_at FROM books ORDER BY rowid'),
@@ -84,6 +95,14 @@ def _collect_payload(database_path: str | Path) -> dict[str, Any]:
             'monster_milestones': dict(milestone),
             'monster_encyclopedia': _rows(con, 'SELECT form_id,first_seen_at FROM monster_encyclopedia ORDER BY first_seen_at,form_id'),
             'monster_care': dict(care),
+            'monster_cycle': cycle_data,
+            'monster_evolution_events': _rows(
+                con, 'SELECT from_form_id,to_form_id,entry_count,happened_at FROM monster_evolution_events ORDER BY event_id'
+            ),
+            'monster_memoirs': _rows(
+                con, 'SELECT memoir_id,monster_name,final_form_id,favorite_book,started_at,completed_at,payload_json '
+                     'FROM monster_memoirs ORDER BY completed_at,rowid'
+            ),
         }
         con.rollback()
         return payload
@@ -147,6 +166,10 @@ def _validate_payload(payload: dict[str, Any]) -> SeedSummary:
     milestone = _require_dict(payload.get('monster_milestones'), 'monster_milestones')
     encyclopedia = _require_list(payload.get('monster_encyclopedia'), 'monster_encyclopedia')
     care = _require_dict(payload.get('monster_care'), 'monster_care')
+    cycle = payload.get('monster_cycle', {'started_at': milestone.get('met_at', ''), 'start_entry_rowid': 0})
+    cycle = _require_dict(cycle, 'monster_cycle')
+    evolution_events = _require_list(payload.get('monster_evolution_events', []), 'monster_evolution_events')
+    memoirs = _require_list(payload.get('monster_memoirs', []), 'monster_memoirs')
 
     form_id = str(state.get('form_id') or '')
     if form_id not in GROWTH_FORMS:
@@ -227,6 +250,26 @@ def _validate_payload(payload: dict[str, Any]) -> SeedSummary:
         if value > 100:
             raise SeedFormatError(f'{field} must be between 0 and 100')
 
+    if not str(cycle.get('started_at') or '').strip():
+        raise SeedFormatError('monster_cycle.started_at must not be blank')
+    _nonnegative_int(cycle.get('start_entry_rowid', 0), 'monster_cycle.start_entry_rowid')
+    for event in evolution_events:
+        if str(event.get('from_form_id')) not in GROWTH_FORMS or str(event.get('to_form_id')) not in GROWTH_FORMS:
+            raise SeedFormatError('invalid evolution event form')
+        _nonnegative_int(event.get('entry_count', 0), 'evolution event entry_count')
+    memoir_ids: set[str] = set()
+    for memoir in memoirs:
+        mid = str(memoir.get('memoir_id') or '').strip()
+        if not mid or mid in memoir_ids or str(memoir.get('final_form_id')) not in GROWTH_FORMS:
+            raise SeedFormatError('invalid or duplicate monster memoir')
+        memoir_ids.add(mid)
+        try:
+            decoded = json.loads(str(memoir.get('payload_json') or '{}'))
+        except json.JSONDecodeError as exc:
+            raise SeedFormatError('invalid monster memoir payload') from exc
+        if not isinstance(decoded, dict):
+            raise SeedFormatError('monster memoir payload must contain an object')
+
     # The aggregate meaningful-count may not exceed successfully fed records. It may be lower
     # because administrative notes can be fed without nourishing growth.
     if entry_count > fed_count:
@@ -286,6 +329,9 @@ def import_seed(database_path: str | Path, seed_path: str | Path, *, data_dir: s
         con.execute('DELETE FROM reading_entries')
         con.execute('DELETE FROM books')
         con.execute('DELETE FROM monster_encyclopedia')
+        con.execute('DELETE FROM monster_evolution_events')
+        con.execute('DELETE FROM monster_memoirs')
+        con.execute('DELETE FROM monster_cycle')
 
         for book in payload['books']:
             con.execute(
@@ -319,6 +365,27 @@ def import_seed(database_path: str | Path, seed_path: str | Path, *, data_dir: s
                 'INSERT INTO monster_encyclopedia(form_id,first_seen_at) VALUES(?,?)',
                 (row.get('form_id'), row.get('first_seen_at')),
             )
+        for row in payload.get('monster_evolution_events', []):
+            con.execute(
+                'INSERT INTO monster_evolution_events(from_form_id,to_form_id,entry_count,happened_at) VALUES(?,?,?,?)',
+                tuple(row.get(k) for k in ('from_form_id','to_form_id','entry_count','happened_at')),
+            )
+        for row in payload.get('monster_memoirs', []):
+            con.execute(
+                'INSERT INTO monster_memoirs(memoir_id,monster_name,final_form_id,favorite_book,started_at,completed_at,payload_json) '
+                'VALUES(?,?,?,?,?,?,?)',
+                tuple(row.get(k) for k in ('memoir_id','monster_name','final_form_id','favorite_book','started_at','completed_at','payload_json')),
+            )
+        cycle = payload.get('monster_cycle') or {
+            'started_at': payload['monster_milestones']['met_at'], 'start_entry_rowid': 0,
+        }
+        # Imported rowids are rebuilt in the same reading-entry order. Clamp corrupt/stale legacy
+        # markers to the imported row count while keeping old seeds compatible.
+        marker = min(max(0, int(cycle.get('start_entry_rowid', 0))), len(payload['reading_entries']))
+        con.execute(
+            'INSERT INTO monster_cycle(singleton,started_at,start_entry_rowid) VALUES(1,?,?)',
+            (cycle.get('started_at'), marker),
+        )
         care = payload['monster_care']
         con.execute(
             """
@@ -364,6 +431,14 @@ def reset_reading_and_genetics(
         con.execute("INSERT INTO monster_milestones(singleton,met_at) VALUES(1,CURRENT_TIMESTAMP)")
         con.execute('DELETE FROM monster_encyclopedia')
         con.execute("INSERT INTO monster_encyclopedia(form_id) VALUES('starter')")
+        # Full reset includes completed creature books and cycle history. Ordinary new-creature
+        # transitions use MonsterMemoirStore.begin_new_cycle() and deliberately preserve these.
+        con.execute('DELETE FROM monster_evolution_events')
+        con.execute('DELETE FROM monster_memoirs')
+        con.execute('DELETE FROM monster_cycle')
+        con.execute(
+            'INSERT INTO monster_cycle(singleton,started_at,start_entry_rowid) VALUES(1,CURRENT_TIMESTAMP,0)'
+        )
         con.execute(
             """
             UPDATE monster_care

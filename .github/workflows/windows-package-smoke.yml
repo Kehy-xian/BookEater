@@ -36,6 +36,7 @@ on:
       - 'src/bookeater/pet_window_v9.py'
       - 'src/bookeater/pet_window_v10.py'
       - 'src/bookeater/pet_window_v11.py'
+      - 'src/bookeater/pet_window_v12.py'
       - 'src/bookeater/pet_art.py'
       - 'src/bookeater/pet_sprite.py'
       - 'src/bookeater/pet_fallback_forms.py'

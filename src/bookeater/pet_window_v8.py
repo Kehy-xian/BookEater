@@ -3,6 +3,7 @@ from __future__ import annotations
 """Desktop-pet V8: route-aware production sprites with lineage-safe vector fallback."""
 
 import textwrap
+from datetime import datetime, timezone
 
 from .pet_art import GEULSSIAL_ANIMATIONS
 from .pet_fallback_forms import approved_visual_form, fallback_family, fallback_variant
@@ -30,6 +31,17 @@ class DesktopPetWindowV8(DesktopPetWindowV7):
         self._sprite_cache: TkSpriteCache | None = None
         self._visual_form_id = 'starter'
         self._visual_revision = -1
+        self._away_days = 0
+        previous_launch = runtime.settings.get('last_launch_at')
+        if previous_launch:
+            try:
+                previous = datetime.fromisoformat(previous_launch)
+                if previous.tzinfo is None:
+                    previous = previous.replace(tzinfo=timezone.utc)
+                self._away_days = max(0, (datetime.now(timezone.utc) - previous).days)
+            except (TypeError, ValueError):
+                pass
+        runtime.settings.set('last_launch_at', datetime.now(timezone.utc).isoformat())
         super().__init__(runtime)
         self._visual_form_id = runtime.store.load_state().form_id
         resource_base = runtime.model_dir.parents[2]
@@ -37,6 +49,8 @@ class DesktopPetWindowV8(DesktopPetWindowV7):
         self.root.after(1900, self._show_launch_greeting)
 
     def _show_launch_greeting(self) -> None:
+        if not self.runtime.settings.get_bool('intro_seen', False):
+            return
         if self._busy or self._dragging or self._open_panels or self._pet_state == 'drop':
             self.root.after(700, self._show_launch_greeting)
             return
@@ -44,6 +58,7 @@ class DesktopPetWindowV8(DesktopPetWindowV7):
         self._talk_line = greeting_line(
             state.form_id, self.runtime.care.load().bond,
             entry_count=state.entry_count, stats=state.stats, rng=self._dialogue_rng,
+            away_days=self._away_days,
         )
         self._talk_cycle = self._frame // 12
         self._pet_state = 'talk'

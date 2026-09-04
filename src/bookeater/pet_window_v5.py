@@ -25,6 +25,12 @@ class DesktopPetWindowV5(DesktopPetWindowV4):
         header = ttk.Frame(body)
         header.pack(fill='x')
         ttk.Label(header, text='내 서재', font=('', 18, 'bold')).pack(side='left')
+        if hasattr(self.runtime, 'memoirs') and hasattr(self, '_open_memoir_library'):
+            ttk.Button(
+                header,
+                text='나만의 책',
+                command=self._open_memoir_library,
+            ).pack(side='right', padx=(6, 0))
         ttk.Button(
             header,
             text='새 책 등록',
