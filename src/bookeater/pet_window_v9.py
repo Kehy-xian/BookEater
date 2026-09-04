@@ -110,7 +110,7 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
         messagebox.showinfo(
             '내보내기 완료',
             f'책 {summary.book_count}권 · 기록 {summary.note_count}개를 저장했어요.\n'
-            f'현재 유전정보·성장흐름·도감·친밀도도 함께 들어 있습니다.{draft_note}\n\n'
+            f'현재 유전정보·성장 흐름·도감·친밀도도 함께 들어 있습니다.{draft_note}\n\n'
             f'{destination}',
             parent=self.root,
         )
@@ -132,7 +132,7 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
         except SeedFormatError:
             messagebox.showerror(
                 '심을 수 없는 파일',
-                '파일이 손상되었거나 이 버전에서 읽을 수 없는 기록입니다.\n현재 기록은 변경하지 않았습니다.',
+                '파일이 손상되었거나 이 버전에서 읽을 수 없는 기록입니다.\n\n현재 기록은 변경하지 않았습니다.',
                 parent=self.root,
             )
             return
@@ -143,8 +143,8 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
         ok = messagebox.askyesno(
             '기록 읽기',
             f'책 {summary.book_count}권 · 기록 {summary.note_count}개가 들어 있는 기록을 심을까요?\n\n'
-            '현재 책·독서기록·유전정보·성장·도감·친밀도는 이 파일의 내용으로 교체됩니다.\n'
-            '자동실행과 화면 설정, 교체 아트는 그대로 유지됩니다.\n'
+            '현재 책·독서기록·유전정보·성장·도감·친밀도는 이 파일의 내용으로 교체됩니다.\n\n'
+            '자동 실행과 화면 설정, 교체 아트는 그대로 유지됩니다.\n\n'
             '교체 직전에 현재 상태를 자동 백업합니다.',
             parent=self.root,
         )
@@ -181,9 +181,9 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
 
         confirmed = messagebox.askyesno(
             '전체 초기화',
-            '처음 만난 날로 되돌아가시겠습니까?\n'
+            '처음 만난 날로 되돌아가시겠습니까?\n\n'
             '유전정보와 독서기록을 포함한 모든 상태가 초기화됩니다.\n\n'
-            '실행 직전에 독서기록과 몬스터 상태 복구용 파일을 자동으로 만듭니다.\n'
+            '실행 직전에 독서기록과 몬스터 상태 복구용 파일을 자동으로 만듭니다.\n\n'
             '계속할까요?',
             parent=self.root,
         )
@@ -219,7 +219,7 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
 
         messagebox.showinfo(
             '초기화 완료',
-            '새 글씨알 상태로 돌아왔어요.\n'
+            '새 글씨알 상태로 돌아왔어요.\n\n'
             f'초기화 전 백업: {backup}',
             parent=self.root,
         )

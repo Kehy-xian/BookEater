@@ -31,7 +31,7 @@ class DesktopPetWindowV3(DesktopPetWindowV2):
         if moment is None:
             ttk.Label(
                 body,
-                text='아직 꺼내 보여줄 독서기록이 없어요. 책을 읽고 기록을 먹여 주면 여기서 다시 만날 수 있어요.',
+                text='아직 꺼내 보여줄 독서기록이 없어요.\n\n책을 읽고 기록을 먹여 주면 여기서 다시 만날 수 있어요.',
                 wraplength=420,
                 justify='left',
             ).pack(anchor='w', pady=(14, 0))

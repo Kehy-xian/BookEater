@@ -10,6 +10,7 @@ from .game.growth_routes import get_growth_form
 from .korean_text import named_subject, quoted_object
 from .pet_window_v11 import DesktopPetWindowV11
 from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime
+from .ui_text_flow import TYPEWRITER_DELAY_MS, typewriter_prefix
 
 
 class DesktopPetWindowV12(DesktopPetWindowV11):
@@ -61,19 +62,52 @@ class DesktopPetWindowV12(DesktopPetWindowV11):
         canvas = tk.Canvas(win, width=560, height=365, bg='#11152f', highlightthickness=0)
         canvas.pack(fill='x')
         is_final = get_growth_form(current).tier >= 3
-        message = tk.StringVar(value='우왓!' if is_final else '어라...?')
+        message = tk.StringVar(value='')
         ttk.Label(win, textvariable=message, font=('', 14, 'bold'), anchor='center').pack(fill='x', pady=(18, 8))
         action = ttk.Frame(win)
         action.pack(fill='x', padx=24)
         jobs: list[str] = []
         alive = {'yes': True}
+        glowing = {'yes': True}
+        advance = {'action': None}
+
+        def clear_actions() -> None:
+            for child in action.winfo_children():
+                child.destroy()
+
+        def run_advance(_event=None):
+            callback = advance['action']
+            if callback is not None:
+                advance['action'] = None
+                callback()
+            return 'break'
+
+        win.bind('<space>', run_advance)
+
+        def type_message(
+            copy: str, done, *, button_text: str = '다음', delay: int = TYPEWRITER_DELAY_MS,
+        ) -> None:
+            clear_actions()
+            advance['action'] = None
+            message.set('')
+
+            def step(index: int = 0) -> None:
+                if not alive['yes']:
+                    return
+                message.set(typewriter_prefix(copy, index))
+                if index <= len(copy):
+                    jobs.append(win.after(delay, lambda: step(index + 1)))
+                else:
+                    advance['action'] = done
+                    ttk.Button(action, text=button_text, command=run_advance).pack(anchor='center')
+            step()
 
         stars = [(random.randint(20, 540), random.randint(15, 340), random.randint(1, 3)) for _ in range(42)]
         for x, y, size in stars:
             canvas.create_oval(x-size, y-size, x+size, y+size, fill='#fff2ae', outline='')
 
         def glow(frame: int = 0) -> None:
-            if not alive['yes']:
+            if not alive['yes'] or not glowing['yes']:
                 return
             canvas.delete('glow')
             radius = 45 + (frame % 10) * 12
@@ -88,6 +122,7 @@ class DesktopPetWindowV12(DesktopPetWindowV11):
         def reveal() -> None:
             if not alive['yes']:
                 return
+            glowing['yes'] = False
             canvas.delete('all')
             for index, (x, y, size) in enumerate(stars):
                 color = '#ffffff' if index % 2 else '#ffe78a'
@@ -101,14 +136,16 @@ class DesktopPetWindowV12(DesktopPetWindowV11):
                 canvas.create_text(280, 190, text=catalog_entry(current).public_name, fill='#25211e')
             tier = get_growth_form(current).tier
             if tier < 3:
-                message.set(f'{self._monster_subject()} 부쩍 컸다!')
-                ttk.Button(action, text='계속하기', command=lambda: finish(False)).pack(anchor='center')
-            else:
-                message.set(
-                    f'{self._monster_subject()} 무럭무럭 자라 어른이 되었어요.\n'
-                    '그동안 열심히 키워줘서 고마워요!'
+                type_message(
+                    f'{self._monster_subject()} 부쩍 컸다!',
+                    lambda: finish(False), button_text='계속하기',
                 )
-                ttk.Button(action, text='계속하기', command=lambda: finish(True)).pack(anchor='center')
+            else:
+                type_message(
+                    f'{self._monster_subject()} 무럭무럭 자라 어른이 되었어요.\n'
+                    '그동안 열심히 키워줘서 고마워요!',
+                    lambda: finish(True), button_text='계속하기',
+                )
             sparkle()
 
         def sparkle(frame: int = 0) -> None:
@@ -139,7 +176,7 @@ class DesktopPetWindowV12(DesktopPetWindowV11):
                 self.root.after(120, self._offer_final_choice)
 
         win.protocol('WM_DELETE_WINDOW', lambda: finish(get_growth_form(current).tier >= 3))
-        jobs.append(win.after(1800, reveal))
+        type_message('우왓!' if is_final else '어라...?', reveal)
 
     def _offer_final_choice(self) -> None:
         from tkinter import messagebox
@@ -182,8 +219,8 @@ class DesktopPetWindowV12(DesktopPetWindowV11):
         ttk.Label(
             body,
             text=(
-                f'{self._monster_subject()} 이제 자신의 보금자리를 찾으러 떠났습니다.\n'
-                f'{self._monster_subject()} 잘 키워줘서 고맙다며 책을 한 권 두고 갔습니다.\n'
+                f'{self._monster_subject()} 이제 자신의 보금자리를 찾으러 떠났습니다.\n\n'
+                f'{self._monster_subject()} 잘 키워줘서 고맙다며 책을 한 권 두고 갔습니다.\n\n'
                 '신기한 책이다. 책을 펼쳐보시겠습니까?'
             ),
             justify='center', anchor='center', wraplength=520,
@@ -293,7 +330,7 @@ class DesktopPetWindowV12(DesktopPetWindowV11):
         from tkinter import messagebox
         again = messagebox.askyesno(
             '나만의 책',
-            f'{memoir.monster_name}의 책은 내 서재에서 언제든지 다시 꺼내볼 수 있습니다.\n'
+            f'{memoir.monster_name}의 책은 내 서재에서 언제든지 다시 꺼내볼 수 있습니다.\n\n'
             '새로운 책을 한 권 더 써보시겠어요?',
             parent=self.root,
         )
@@ -314,7 +351,7 @@ class DesktopPetWindowV12(DesktopPetWindowV11):
         body = ttk.Frame(win, padding=14)
         body.pack(fill='both', expand=True)
         ttk.Label(body, text='나만의 책', font=('', 18, 'bold')).pack(anchor='w')
-        ttk.Label(body, text='다 자란 북이터가 남기고 간 책입니다.').pack(anchor='w', pady=(2, 10))
+        ttk.Label(body, text='다 자란 몬스터가 남기고 간 책입니다.').pack(anchor='w', pady=(2, 10))
         if not books:
             ttk.Label(body, text='아직 완성된 책이 없어요.').pack(anchor='w')
             return

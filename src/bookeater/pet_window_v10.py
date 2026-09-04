@@ -50,7 +50,7 @@ class DesktopPetWindowV10(DesktopPetWindowV9):
     def open_monster_name_panel(self) -> None:
         tk, ttk = self.tk, self.ttk
         current = self._monster_name()
-        win = self._new_panel('몬스터 이름 다시 짓기' if current else '몬스터 이름 짓기')
+        win = self._new_panel('새로 이름 붙이기')
         win.transient(self.root)
         body = ttk.Frame(win, padding=16)
         body.pack(fill='both', expand=True)
@@ -75,14 +75,7 @@ class DesktopPetWindowV10(DesktopPetWindowV9):
             self._rebuild_main_menu()
             win.destroy()
 
-        def reset_name() -> None:
-            self.runtime.settings.delete('monster_name')
-            self._rebuild_main_menu()
-            win.destroy()
-
         ttk.Button(actions, text='변경하기' if current else '이름 짓기', command=save).pack(side='right')
-        if current:
-            ttk.Button(actions, text='이름만 초기화', command=reset_name).pack(side='right', padx=(0, 6))
         entry.bind('<Return>', lambda _event: save())
         entry.focus_set()
 

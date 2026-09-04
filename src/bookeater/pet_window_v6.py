@@ -19,6 +19,7 @@ from .services.birth_imprint import create_birth_imprint
 from .services.catalog import configured_catalog_client
 from .services.windows_autostart import can_enable_autostart, is_autostart_enabled, set_autostart
 from .version import APP_VERSION
+from .ui_text_flow import TYPEWRITER_DELAY_MS, space_can_advance, typewriter_prefix
 
 
 class DesktopPetWindowV6(DesktopPetWindowV5):
@@ -61,7 +62,7 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
         tk, ttk = self.tk, self.ttk
         self.root.withdraw()
         win = tk.Toplevel(self.root)
-        win.title('북이터의 탄생')
+        win.title('몬스터의 탄생')
         win.geometry('560x520')
         win.resizable(False, False)
         win.attributes('-topmost', True)
@@ -87,7 +88,7 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
         )
         text_var = tk.StringVar(value='')
         text = ttk.Label(win, textvariable=text_var, font=('', 13), anchor='center', justify='center')
-        text.pack(fill='x', padx=28, pady=(16, 8))
+        text.pack(fill='x', padx=28, pady=(18, 12))
         controls = ttk.Frame(win, padding=(28, 0, 28, 18))
         controls.pack(fill='both', expand=True)
 
@@ -109,16 +110,37 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
             for child in controls.winfo_children():
                 child.destroy()
 
-        def type_text(message: str, done=None, *, delay: int = 42) -> None:
+        advance = {'action': None}
+
+        def run_advance(_event=None):
+            focus = win.focus_get()
+            if focus is not None and not space_can_advance(focus.winfo_class()):
+                return None
+            action = advance['action']
+            if action is not None:
+                advance['action'] = None
+                action()
+            return 'break'
+
+        win.bind('<space>', run_advance)
+
+        def type_text(
+            message: str, done=None, *, delay: int = TYPEWRITER_DELAY_MS,
+            button_text: str = '다음',
+        ) -> None:
+            clear_controls()
+            advance['action'] = None
             text_var.set('')
             def step(index: int = 0) -> None:
                 if not alive['yes']:
                     return
-                text_var.set(message[:index])
+                # A blank visual line keeps multi-line Korean copy from feeling cramped.
+                text_var.set(typewriter_prefix(message, index))
                 if index <= len(message):
                     jobs.append(win.after(delay, lambda: step(index + 1)))
                 elif done is not None:
-                    jobs.append(win.after(900, done))
+                    advance['action'] = done
+                    ttk.Button(controls, text=button_text, command=run_advance).pack(pady=(4, 0))
             step()
 
         favorite_var = tk.StringVar()
@@ -132,6 +154,7 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
 
         def show_favorite_entry() -> None:
             clear_controls()
+            advance['action'] = None
             entry = ttk.Entry(controls, textvariable=favorite_var, font=('', 12))
             entry.pack(fill='x', pady=(4, 8))
             button = ttk.Button(controls, text='이야기하기', command=accept_favorite)
@@ -155,6 +178,7 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
 
         def show_name_entry() -> None:
             clear_controls()
+            advance['action'] = None
             entry = ttk.Entry(controls, textvariable=name_var, font=('', 12))
             entry.pack(fill='x', pady=(4, 8))
             button = ttk.Button(controls, text='이름 붙이기', command=accept_name)
@@ -185,20 +209,19 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
             canvas.delete('glow')
             canvas.delete('egg')
             self._start_birth_idle(canvas, win, alive)
-            type_text('우왓!', birth_message_one, delay=65)
+            type_text('우왓!', birth_message_one)
 
         def birth_message_one() -> None:
             type_text(
-                '당신의 북이터가 무사히 태어났습니다.\n당신이 읽은 책과 당신의 생각을 꾸준히 먹이면',
+                '당신의 몬스터가 무사히 태어났습니다.\n당신이 읽은 책과 당신의 생각을 꾸준히 먹이면',
                 birth_message_two,
-                delay=34,
             )
 
         def birth_message_two() -> None:
             type_text('언젠가 멋진 몬스터로 자라날 거예요.', birth_message_three)
 
         def birth_message_three() -> None:
-            type_text('잘 돌봐주세요.', finish_birth)
+            type_text('잘 돌봐주세요.', finish_birth, button_text='시작하기')
 
         def finish_birth() -> None:
             alive['yes'] = False
@@ -313,10 +336,10 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
             try:
                 set_autostart(desired)
                 self.runtime.settings.set_bool('autostart_enabled', desired)
-                msg.set('Windows 자동실행 설정을 저장했어요.' if desired else 'Windows 자동실행을 껐어요.')
+                msg.set('Windows 자동 실행 설정을 저장했어요.' if desired else 'Windows 자동 실행을 껐어요.')
             except Exception:
                 auto_var.set(False)
-                msg.set('자동실행 설정을 변경하지 못했어요. 기존 설정은 그대로입니다.')
+                msg.set('자동 실행 설정을 변경하지 못했어요. 기존 설정은 그대로입니다.')
 
         auto = ttk.Checkbutton(
             body,
@@ -395,19 +418,19 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
             update_button.configure(state='normal')
             download_button.configure(state='normal' if update_manifest['value'] is not None else 'disabled')
             if error or installer is None:
-                msg.set('설치파일을 안전하게 받지 못했어요. 기존 앱과 데이터는 변경하지 않았습니다.')
+                msg.set('설치 파일을 안전하게 받지 못했어요. 기존 앱과 데이터는 변경하지 않았습니다.')
                 return
-            msg.set(f'새 버전 {installer.version} 설치파일의 SHA-256 검증을 마쳤어요.')
+            msg.set(f'새 버전 {installer.version} 설치 파일의 SHA-256 검증을 마쳤어요.')
             from tkinter import messagebox
             install_now = messagebox.askyesno(
                 '업데이트 설치 준비 완료',
-                f'새 버전 {installer.version} 설치파일을 안전하게 확인했어요.\n\n'
+                f'새 버전 {installer.version} 설치 파일을 안전하게 확인했어요.\n\n'
                 '지금 설치를 시작하고 책먹는 몬스터를 종료할까요?\n'
                 '독서기록과 설정은 설치 폴더 밖에 그대로 보존됩니다.',
                 parent=win,
             )
             if not install_now:
-                msg.set('설치파일은 이 PC의 업데이트 폴더에 보관했어요. 나중에 다시 업데이트를 확인할 수 있습니다.')
+                msg.set('설치 파일은 이 PC의 업데이트 폴더에 보관했어요. 나중에 다시 업데이트를 확인할 수 있습니다.')
                 return
             try:
                 launch_verified_installer(installer)
@@ -468,7 +491,7 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
             from tkinter import messagebox
             confirmed = messagebox.askyesno(
                 '업데이트 다운로드',
-                f'새 버전 {manifest.latest_version} 설치파일을 받을까요?\n\n'
+                f'새 버전 {manifest.latest_version} 설치 파일을 받을까요?\n\n'
                 '다운로드가 끝나면 SHA-256을 확인한 뒤 설치 여부를 다시 묻습니다.',
                 parent=win,
             )
@@ -476,7 +499,7 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
                 return
             update_button.configure(state='disabled')
             download_button.configure(state='disabled')
-            msg.set('설치파일을 받는 중… 완료되면 안전성 검사를 진행합니다.')
+            msg.set('설치 파일을 받는 중… 완료되면 안전성 검사를 진행합니다.')
 
             def work() -> None:
                 try:
@@ -497,7 +520,7 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
         download_button.configure(command=download_update)
         ttk.Label(
             body,
-            text='업데이트 확인: 새 업데이트 버전이 있는지 확인\n'
+                text='업데이트 확인: 새 업데이트 버전이 있는지 확인\n\n'
                  '업데이트 받기: 업데이트를 수동으로 진행',
             wraplength=380,
             justify='left',
