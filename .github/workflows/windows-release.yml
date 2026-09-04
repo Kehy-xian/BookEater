@@ -103,6 +103,8 @@ jobs:
           $env:BOOKEATER_DATA_DIR = Join-Path $env:RUNNER_TEMP 'bookeater-release-smoke-data'
           $smoke = Start-Process -FilePath 'dist\BookEater\BookEater.exe' -ArgumentList '--smoke' -Wait -PassThru
           if ($smoke.ExitCode -ne 0) { throw "packaged smoke exit=$($smoke.ExitCode)" }
+          $lifecycle = Start-Process -FilePath 'dist\BookEater\BookEater.exe' -ArgumentList '--lifecycle-smoke' -Wait -PassThru
+          if ($lifecycle.ExitCode -ne 0) { throw "lifecycle smoke exit=$($lifecycle.ExitCode)" }
           $mutex = Start-Process -FilePath 'dist\BookEater\BookEater.exe' -ArgumentList '--mutex-smoke' -Wait -PassThru
           if ($mutex.ExitCode -ne 0) { throw "mutex smoke exit=$($mutex.ExitCode)" }
       - name: Install Inno Setup compiler

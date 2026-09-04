@@ -130,12 +130,6 @@ class DesktopPetWindowV2(DesktopPetWindow):
             ttk.Label(info, text=label).grid(row=row, column=0, sticky='w', pady=3)
             ttk.Label(info, text=value).grid(row=row, column=1, sticky='w', padx=(18, 0), pady=3)
 
-        if not entry.concept_approved:
-            ttk.Label(
-                body,
-                text='이 단계의 외형 이미지는 추후 업데이트될 예정이에요.',
-                wraplength=365,
-            ).pack(anchor='w', pady=(18, 0))
         ttk.Label(
             body,
             text='성장의 정확한 기준과 내부 점수는 보여주지 않아요. 남긴 기록이 쌓이면서 자연스럽게 모습이 달라집니다.',

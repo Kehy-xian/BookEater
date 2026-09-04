@@ -81,6 +81,8 @@ jobs:
           if (-not (Test-Path $exe)) { throw 'installed BookEater.exe missing' }
           $smoke = Start-Process -FilePath $exe -ArgumentList '--smoke' -Wait -PassThru
           if ($smoke.ExitCode -ne 0) { throw "installed smoke exit=$($smoke.ExitCode)" }
+          $lifecycle = Start-Process -FilePath $exe -ArgumentList '--lifecycle-smoke' -Wait -PassThru
+          if ($lifecycle.ExitCode -ne 0) { throw "installed lifecycle smoke exit=$($lifecycle.ExitCode)" }
 
           $db = Join-Path $dataDir 'bookeater.sqlite3'
           if (-not (Test-Path $db)) { throw 'installed app did not create persistent database' }

@@ -55,14 +55,14 @@ reliable checklist by itself.
 - Collision-safe book selectors: duplicate title/author labels use publisher, ISBN or a stable
   short local token and never overwrite another book ID in the UI mapping.
 - Local memory resurfacing and broad personality dialogue.
-- Optional launch drop animation, 100/75/50% size controls, tray home/restore and per-user Windows
-  auto-start, default OFF.
+- One-time birth ritual with favorite-book imprint and required monster naming, five size levels,
+  tray home/restore and per-user Windows auto-start, default OFF.
 - Care state, distinct snack/delicious/play/wash poses, post-feed delicious reaction and one
   minimal letter-catching mini-game; bond gains are capped at five per day and lose at most two
   per fully neglected day after a grace day. Bond changes movement pace, activity, greeting and
   talk frequency but never the reading-derived evolution lineage.
-- Persistent local monster naming with Korean subject-particle labels, rename/name-only reset and
-  full-reset restoration to the unnamed state.
+- Persistent local monster naming with automatic Korean particles and renaming. A full reset or a
+  completed-monster cycle returns to the birth ritual, where a new name is required.
 - Real-catalog recommendation client, explicit cold-start explanation, local taste/expansion ranking
   and confirmed wishlist save.
 - Catalog-first ISBN/title/author book registration with edition selection and manual fallback.
@@ -81,6 +81,8 @@ reliable checklist by itself.
 - Public `v0.1.0-beta.3` Windows prerelease; packaged smoke/mutex, installer upgrade preservation,
   public manifest and exact public installer SHA-256 validation all passed.
 - Deployed Cloudflare/Aladin catalog Worker and opt-in feedback backend foundation.
+- Birth/evolution ceremonies, final-growth genetics lock, optional farewell, durable per-monster
+  memoir books and a new-monster cycle that preserves the existing reading archive.
 
 ## Implemented foundations but not fully enabled
 
@@ -94,7 +96,6 @@ reliable checklist by itself.
 ## Not implemented
 
 - Approved names and original production art for the 12 reserved final forms.
-- Archiving a fully grown monster to a permanent shelf and raising another starter.
 - Deterministic quiz mode based on the user's own notes.
 - Full opt-in improvement-data lifecycle: clear consent text/version, local correction storage,
   redaction preview, upload queue/retry and deletion request.
@@ -105,9 +106,9 @@ reliable checklist by itself.
 
 ## Highest-priority refinement/bug risks
 
-1. The post-beta.4 settings/recommendation/book-search/tray/scale/naming and free-roaming changes
-   need real Windows usability testing beyond headless CI, including slow network and panel-close
-   behavior.
+1. Birth, evolution, final-growth choice, farewell, memoir and new-cycle screens need a complete
+   isolated Windows lifecycle pass beyond headless CI. Slow-network and panel-close behavior also
+   remains part of this manual pass.
 2. User-supplied art is validated and safely activated, but all replacement designs still require
    an actual 190×190 desktop-scale visual review before inclusion in a public installer.
 3. Catalog and feedback endpoints need rate-limit, abuse and retention-policy review before public
@@ -115,10 +116,9 @@ reliable checklist by itself.
 
 ## Next order
 
-1. Perform a manual Windows UI pass for beta.4 animation timing, tray, scale, small panels and slow
-   network. Automated core, package/mutex, installer upgrade, live Worker and release checks passed.
-2. Finalize the base/evolution art and major action animation sets.
-3. Add explicit local correction/odd-result UX before enabling any improvement-data upload.
+1. Add an isolated lifecycle smoke mode and run the complete Windows birth-to-new-cycle pass.
+2. Add explicit local correction/odd-result UX before enabling any improvement-data upload.
+3. Finalize the base/evolution art and major action animation sets when approved assets are ready.
 4. Add approved rear/upward walking frames, then complete multi-monitor/manual Windows playtests.
 5. After the core implementation and consent lifecycle are stable, begin the administrator
    operations backlog in `POST_CORE_ADMIN_OPERATIONS_BACKLOG.md`.

@@ -49,10 +49,13 @@ The currently approved visual tree is structurally:
 - Always on top.
 - Drag to move.
 - Double click opens reading-record entry.
-- Right click menu currently exposes record entry, book-record view and exit.
-- Vector placeholder has IDLE and EAT animation.
+- The right-click menu exposes feeding, memories, recommendations, bookshelf, encyclopedia,
+  current-monster care/profile, tray rest, data/settings and guarded exit actions.
+- The desktop shell renders validated replaceable sprite states, with a vector fallback when a
+  complete sprite set is unavailable.
 - Production art contract exists for idle/eat/walk/read/sleep/talk/spit_memory sprite states.
-- A pure roaming state engine now exists for boundary-safe wandering, idle pauses, reading, sleeping and talking; UI integration is the next movement step.
+- The roaming engine is integrated with boundary-safe horizontal/vertical/diagonal motion,
+  walking/running, pauses, sitting, dozing, edge bumps and drag/drop interruption.
 
 ### Windows build
 - PyInstaller one-folder Windows build.
@@ -164,7 +167,7 @@ For evolution lines:
 2. Connect the roaming state engine to the transparent Windows pet and stress-test drag/menu/feed interruptions.
 3. Add current-monster life-history view (`만난 날`, `첫 기록을 먹인 날`).
 4. Add simple encyclopedia data model with Route A/B as same-tier siblings and one-line personality hints.
-5. Finish menu shell: 내 서재 / 기억 꺼내기 / 설정 placeholders backed by real local services.
+5. Keep the completed menu services covered by regression and Windows lifecycle checks.
 6. Add first-run drop animation and auto-start toggle.
 7. Build memory resurfacing + personality dialogue engine.
 8. Add care loop and one minimal mini-game.

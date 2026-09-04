@@ -109,6 +109,12 @@ jobs:
           if ($proc.ExitCode -ne 0) { throw "packaged smoke exit=$($proc.ExitCode)" }
           if (-not (Test-Path (Join-Path $env:BOOKEATER_DATA_DIR 'bookeater.sqlite3'))) { throw 'packaged SQLite DB was not created' }
           Write-Host 'PACKAGED_WINDOWS_SMOKE_OK'
+      - name: Packaged lifecycle persistence smoke
+        shell: pwsh
+        run: |
+          $proc = Start-Process -FilePath 'dist/BookEater/BookEater.exe' -ArgumentList '--lifecycle-smoke' -Wait -PassThru
+          if ($proc.ExitCode -ne 0) { throw "lifecycle smoke exit=$($proc.ExitCode)" }
+          Write-Host 'PACKAGED_WINDOWS_LIFECYCLE_SMOKE_OK'
       - name: Packaged Windows mutex smoke
         shell: pwsh
         run: |

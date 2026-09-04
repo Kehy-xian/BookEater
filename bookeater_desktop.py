@@ -5,10 +5,11 @@ import sys
 
 from bookeater.desktop import run_desktop
 from bookeater.launch_guard import run_guarded
-from bookeater.pet_window_v11 import run_pet_v11
+from bookeater.pet_window_v12 import run_pet_v12
 from bookeater.runtime import bootstrap_runtime
 from bookeater.services.catalog import CatalogClient, configured_catalog_client
 from bookeater.services.data_transfer import SEED_FORMAT, SEED_VERSION
+from bookeater.services.lifecycle_smoke import lifecycle_smoke
 from bookeater.services.single_instance import windows_mutex_self_test
 from bookeater.services.update_install import download_verified_installer, launch_verified_installer
 
@@ -48,11 +49,20 @@ def _smoke() -> int:
     )) else 3
 
 
+def _lifecycle_smoke() -> int:
+    """Exercise the full persistent monster cycle in a disposable profile."""
+    payload = lifecycle_smoke()
+    print(json.dumps(payload, ensure_ascii=True, sort_keys=True))
+    return 0 if payload.get('ok') else 6
+
+
 if __name__ == '__main__':
     if '--smoke' in sys.argv:
         raise SystemExit(_smoke())
     if '--mutex-smoke' in sys.argv:
         raise SystemExit(0 if windows_mutex_self_test() else 5)
+    if '--lifecycle-smoke' in sys.argv:
+        raise SystemExit(_lifecycle_smoke())
     if '--full-window' in sys.argv:
         raise SystemExit(run_guarded(run_desktop))
-    raise SystemExit(run_guarded(run_pet_v11))
+    raise SystemExit(run_guarded(run_pet_v12))
