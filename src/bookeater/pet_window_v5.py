@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Desktop-pet V5: practical bookshelf UI on top of dialogue, memory and encyclopedia."""
 
+from .pet_window import _quoted_with_object_particle
 from .pet_window_v4 import DesktopPetWindowV4
 from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime
 
@@ -150,7 +151,7 @@ class DesktopPetWindowV5(DesktopPetWindowV4):
             edit_body.pack(fill='both', expand=True)
             title_var = tk.StringVar(value=book.title)
             author_var = tk.StringVar(value=book.author)
-            msg = tk.StringVar(value='표시 정보만 수정합니다. 독서기록과 유전정보는 바뀌지 않습니다.')
+            msg = tk.StringVar(value='표시 정보만 수정합니다.\n독서기록과 유전정보는 바뀌지 않습니다.')
             ttk.Label(edit_body, text='책 제목').grid(row=0, column=0, sticky='w')
             title_entry = ttk.Entry(edit_body, textvariable=title_var, width=40)
             title_entry.grid(row=1, column=0, sticky='ew', pady=(3, 8))
@@ -181,13 +182,10 @@ class DesktopPetWindowV5(DesktopPetWindowV4):
                 messagebox.showinfo('내 서재', '삭제할 책을 먼저 선택해 주세요.', parent=win)
                 return
             from tkinter import messagebox
-            note_count = len(self.runtime.journal.notes_for_book(book.book_id))
             if not messagebox.askyesno(
                 '서재에서 책 삭제',
-                f'“{book.title}”을 내 서재에서 삭제할까요?\n\n'
-                f'연결된 독서기록 {note_count}개는 삭제하지 않고 제목 연결만 해제합니다.\n'
-                '이미 반영된 유전정보·성장·도감도 그대로 유지됩니다.\n\n'
-                '모든 기록과 유전정보까지 지우려면 데이터 관리의 “전체 초기화”를 사용해야 합니다.',
+                f'{_quoted_with_object_particle(book.title)} 내 서재에서 삭제할까요?\n'
+                '유전정보는 그대로 유지됩니다.',
                 parent=win,
             ):
                 return
@@ -197,7 +195,7 @@ class DesktopPetWindowV5(DesktopPetWindowV4):
             except Exception:
                 messagebox.showerror('삭제 실패', '책 정보를 삭제하지 못했어요.', parent=win)
                 return
-            messagebox.showinfo('삭제 완료', '책 정보만 서재에서 삭제했어요. 독서기록과 유전정보는 보존했습니다.', parent=win)
+            messagebox.showinfo('삭제 완료', '내 서재에서 삭제했어요.\n유전정보는 그대로 유지됩니다.', parent=win)
 
         ttk.Button(book_actions, text='책 정보 수정', command=edit_selected_book).pack(side='left')
         ttk.Button(book_actions, text='서재에서 삭제', command=delete_selected_book).pack(side='left', padx=(6, 0))

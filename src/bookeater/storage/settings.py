@@ -66,6 +66,14 @@ class AppSettingsStore:
     def set_bool(self, key: str, value: bool) -> None:
         self.set(key, '1' if value else '0')
 
+    def delete(self, key: str) -> None:
+        con = self._connect()
+        try:
+            con.execute('DELETE FROM app_settings WHERE key=?', (str(key),))
+            con.commit()
+        finally:
+            con.close()
+
     def clear(self) -> None:
         """Restore every in-app preference to its built-in default."""
         con = self._connect()

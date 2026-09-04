@@ -177,25 +177,17 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
     def reset_reading_profile(self) -> None:
         if not self._destructive_data_action_available():
             return
-        from tkinter import messagebox, simpledialog
+        from tkinter import messagebox
 
         confirmed = messagebox.askyesno(
             '전체 초기화',
-            '독서기록, 책장, 성장 유전정보, 도감, 만난 날짜와 친밀도를 새 글씨알 상태로 초기화합니다.\n'
-            '시작 애니메이션 등 앱 설정도 기본값으로 되돌리고 Windows 자동 실행을 끕니다.\n'
-            '자동 백업과 사용자가 준비한 교체 아트 파일은 지우지 않습니다.\n\n'
-            '실행 직전에 독서기록과 몬스터 상태 복구용 파일을 자동으로 만듭니다. 계속할까요?',
+            '처음 만난 날로 되돌아가시겠습니까?\n'
+            '유전정보와 독서기록을 포함한 모든 상태가 초기화됩니다.\n\n'
+            '실행 직전에 독서기록과 몬스터 상태 복구용 파일을 자동으로 만듭니다.\n'
+            '계속할까요?',
             parent=self.root,
         )
         if not confirmed:
-            return
-        typed = simpledialog.askstring(
-            '마지막 확인',
-            '실수 방지를 위해 “초기화”라고 입력해 주세요.',
-            parent=self.root,
-        )
-        if (typed or '').strip() != '초기화':
-            messagebox.showinfo('초기화 취소', '입력이 일치하지 않아 아무것도 변경하지 않았어요.', parent=self.root)
             return
 
         self._data_mutating = True
@@ -208,6 +200,8 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
             )
             self._set_pet_scale(1.0, persist=False)
             self._refresh_after_profile_change()
+            if hasattr(self, '_rebuild_main_menu'):
+                self._rebuild_main_menu()
         except Exception:
             if autostart_was_enabled:
                 try:

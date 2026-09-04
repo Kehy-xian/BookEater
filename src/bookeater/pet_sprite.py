@@ -12,6 +12,7 @@ form receives its own approved asset slug, it automatically stops inheriting and
 """
 
 from pathlib import Path
+import sys
 from typing import Any
 
 from .art_override_store import override_source_root
@@ -21,6 +22,13 @@ from .pet_fallback_forms import approved_visual_form
 
 SPRITE_RELATIVE_DIR = Path('resources') / 'sprites'
 ART_OVERRIDE_DIRNAME = 'art_overrides'
+
+
+def _binary_alpha(image: Any) -> Any:
+    """Convert partial alpha to a Windows color-key-safe mask."""
+    alpha = image.getchannel('A').point(lambda value: 255 if value >= 96 else 0)
+    image.putalpha(alpha)
+    return image
 
 
 def sprite_root(resource_root: str | Path) -> Path:
@@ -136,43 +144,61 @@ class TkSpriteCache:
         self.tk = tk_module
         self.resource_root = Path(resource_root)
         self.override_root = Path(override_root) if override_root is not None else _runtime_override_root()
-        self._cache: dict[tuple[str, str, float], tuple[Any, ...] | None] = {}
+        self._cache: dict[tuple[str, str, float, bool], tuple[Any, ...] | None] = {}
 
-    def _try_load(self, paths: tuple[Path, ...], scale: float = 1.0) -> tuple[Any, ...] | None:
+    def _try_load(
+        self, paths: tuple[Path, ...], scale: float = 1.0, *, mirror: bool = False,
+    ) -> tuple[Any, ...] | None:
         if not paths:
             return None
         try:
-            if scale != 1.0:
+            if scale != 1.0 or mirror or sys.platform.startswith('win'):
                 from PIL import Image, ImageTk
                 images = []
                 for path in paths:
                     with Image.open(path) as source:
+                        source = source.convert('RGBA')
                         size = (
                             max(1, round(source.width * scale)),
                             max(1, round(source.height * scale)),
                         )
-                        images.append(ImageTk.PhotoImage(source.resize(size, Image.Resampling.LANCZOS)))
+                        if size != source.size:
+                            source = source.resize(size, Image.Resampling.LANCZOS)
+                        if mirror:
+                            source = source.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+                        if sys.platform.startswith('win'):
+                            # Tk's Windows color-key window blends partial alpha against the
+                            # magenta key first, causing pink shadows/halos. Pixel sprites use a
+                            # binary mask here so transparent pixels never leak the key color.
+                            source = _binary_alpha(source)
+                        images.append(ImageTk.PhotoImage(source))
                 return tuple(images)
             return tuple(self.tk.PhotoImage(file=str(path)) for path in paths)
         except Exception:
             return None
 
-    def frames(self, form_id: str, state: str, *, scale: float = 1.0) -> tuple[Any, ...] | None:
+    def frames(
+        self, form_id: str, state: str, *, scale: float = 1.0, mirror: bool = False,
+    ) -> tuple[Any, ...] | None:
         scale = max(0.5, min(1.0, float(scale)))
-        key = (str(form_id), str(state), scale)
+        key = (str(form_id), str(state), scale, bool(mirror))
         if key in self._cache:
             return self._cache[key]
 
         # A complete local override is preferred, but a corrupt PNG must not suppress a healthy
         # packaged animation. Sources are attempted atomically and never mixed frame-by-frame.
         if override_animation_available(self.override_root, form_id, state):
-            images = self._try_load(override_frame_paths(self.override_root, form_id, state), scale)
+            images = self._try_load(
+                override_frame_paths(self.override_root, form_id, state), scale, mirror=mirror,
+            )
             if images is not None:
                 self._cache[key] = images
                 return images
 
         if production_animation_available(self.resource_root, form_id, state):
-            images = self._try_load(production_frame_paths(self.resource_root, form_id, state), scale)
+            images = self._try_load(
+                production_frame_paths(self.resource_root, form_id, state), scale, mirror=mirror,
+            )
             if images is not None:
                 self._cache[key] = images
                 return images

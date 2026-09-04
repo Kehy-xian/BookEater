@@ -59,22 +59,27 @@ def test_offscreen_drag_is_clamped_back_to_visible_desktop():
     assert motion.y == 600 - 190 - 8
 
 
-def test_walk_targets_stay_on_desktop_floor_and_can_bump_edges():
+def test_roaming_uses_two_dimensions_multiple_paces_and_can_bump_edges():
     area = WorkArea(0, 0, 1000, 700)
     planner = RoamPlanner(rng=random.Random(4), step_px=20)
     motion = PetMotion(400, 700 - 190 - 8)
     saw_edge_target = False
     saw_bump = False
+    target_ys = set()
+    movement_states = set()
     for _ in range(1500):
         motion = planner.tick(motion, area)
         if motion.target_x in {8, 1000 - 190 - 8}:
             saw_edge_target = True
         if motion.state == 'bump':
             saw_bump = True
-        if motion.state == 'walk':
-            assert motion.target_y == 700 - 190 - 8
+        if motion.state in {'walk', 'run'}:
+            movement_states.add(motion.state)
+            target_ys.add(motion.target_y)
     assert saw_edge_target
     assert saw_bump
+    assert movement_states == {'walk', 'run'}
+    assert len(target_ys) > 3
 
 
 def test_higher_bond_increases_talking_weight():

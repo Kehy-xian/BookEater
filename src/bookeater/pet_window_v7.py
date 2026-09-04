@@ -20,15 +20,20 @@ class DesktopPetWindowV7(DesktopPetWindowV6):
 
     def open_care_panel(self) -> None:
         tk, ttk = self.tk, self.ttk
-        win = self._new_panel('돌보기', '470x360')
+        win = self._new_panel(f'{self._monster_label()} 돌보기', '470x390')
         body = ttk.Frame(win, padding=18)
         body.pack(fill='both', expand=True)
-        ttk.Label(body, text='돌보기', font=('', 18, 'bold')).pack(anchor='w')
+        ttk.Label(body, text=f'{self._monster_label()} 돌보기', font=('', 18, 'bold')).pack(anchor='w')
         ttk.Label(
             body,
             text='돌보기는 기분과 친밀도만 바꾸고 독서 진화에는 영향을 주지 않아요.',
             wraplength=420,
         ).pack(anchor='w', pady=(3, 12))
+        ttk.Label(
+            body,
+            text='친밀도는 하루 최대 5까지 오릅니다. 하루를 온전히 돌보지 않으면 이후 하루마다 2씩 내려갑니다.',
+            wraplength=420,
+        ).pack(anchor='w', pady=(0, 10))
 
         bars = ttk.Frame(body)
         bars.pack(fill='x')

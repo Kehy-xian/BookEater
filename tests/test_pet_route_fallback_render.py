@@ -25,8 +25,8 @@ class FakeSpriteCache:
     def __init__(self, states):
         self.states = set(states)
 
-    def frames(self, _form_id, state, *, scale=1.0):
-        del scale
+    def frames(self, _form_id, state, *, scale=1.0, mirror=False):
+        del scale, mirror
         return (object(), object()) if state in self.states else None
 
 

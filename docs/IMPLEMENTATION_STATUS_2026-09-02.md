@@ -45,7 +45,9 @@ reliable checklist by itself.
 
 ### Player experience
 
-- Transparent always-on-top draggable Windows pet with floor roaming, edge bump and drag-drop fall.
+- Transparent always-on-top draggable Windows pet with horizontal/vertical/diagonal roaming,
+  walk/run/pause/sit/doze variation, edge bump and drag-drop fall. Left-facing movement mirrors
+  the sprite; dedicated upward-facing art remains pending.
 - Sprite IDLE/EAT/WALK/READ/SLEEP/TALK/SPIT_MEMORY plus optional
   SNACK/DELICIOUS/PLAY/WASH/BUMP/DROP replacement states and lineage-safe fallback. Every major
   visible action can be replaced independently with a complete validated PNG set.
@@ -56,8 +58,11 @@ reliable checklist by itself.
 - Optional launch drop animation, 100/75/50% size controls, tray home/restore and per-user Windows
   auto-start, default OFF.
 - Care state, distinct snack/delicious/play/wash poses, post-feed delicious reaction and one
-  minimal letter-catching mini-game; bond changes greeting and talk frequency but never the
-  reading-derived evolution lineage.
+  minimal letter-catching mini-game; bond gains are capped at five per day and lose at most two
+  per fully neglected day after a grace day. Bond changes movement pace, activity, greeting and
+  talk frequency but never the reading-derived evolution lineage.
+- Persistent local monster naming with Korean subject-particle labels, rename/name-only reset and
+  full-reset restoration to the unnamed state.
 - Real-catalog recommendation client, explicit cold-start explanation, local taste/expansion ranking
   and confirmed wishlist save.
 - Catalog-first ISBN/title/author book registration with edition selection and manual fallback.
@@ -100,8 +105,9 @@ reliable checklist by itself.
 
 ## Highest-priority refinement/bug risks
 
-1. Beta.4 settings/recommendation/book-search/tray/scale flows need real Windows usability testing
-   beyond headless CI, including slow network and panel-close behavior.
+1. The post-beta.4 settings/recommendation/book-search/tray/scale/naming and free-roaming changes
+   need real Windows usability testing beyond headless CI, including slow network and panel-close
+   behavior.
 2. User-supplied art is validated and safely activated, but all replacement designs still require
    an actual 190×190 desktop-scale visual review before inclusion in a public installer.
 3. Catalog and feedback endpoints need rate-limit, abuse and retention-policy review before public
@@ -113,6 +119,6 @@ reliable checklist by itself.
    network. Automated core, package/mutex, installer upgrade, live Worker and release checks passed.
 2. Finalize the base/evolution art and major action animation sets.
 3. Add explicit local correction/odd-result UX before enabling any improvement-data upload.
-4. Complete multi-monitor/manual Windows playtests.
+4. Add approved rear/upward walking frames, then complete multi-monitor/manual Windows playtests.
 5. After the core implementation and consent lifecycle are stable, begin the administrator
    operations backlog in `POST_CORE_ADMIN_OPERATIONS_BACKLOG.md`.

@@ -104,7 +104,7 @@ class DesktopPetWindowV2(DesktopPetWindow):
         entry = catalog_entry(state.form_id)
         encountered = self.runtime.encyclopedia.encountered_ids()
 
-        win = self._new_panel('내 몬스터 정보', '410x360')
+        win = self._new_panel(f'{self._monster_label()} 정보', '410x360')
         body = ttk.Frame(win, padding=18)
         body.pack(fill='both', expand=True)
 

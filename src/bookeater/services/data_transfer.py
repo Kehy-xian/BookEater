@@ -321,7 +321,13 @@ def import_seed(database_path: str | Path, seed_path: str | Path, *, data_dir: s
             )
         care = payload['monster_care']
         con.execute(
-            'UPDATE monster_care SET fullness=?,mood=?,cleanliness=?,bond=?,updated_at=? WHERE singleton=1',
+            """
+            UPDATE monster_care
+            SET fullness=?,mood=?,cleanliness=?,bond=?,updated_at=?,
+                bond_gain_date=date('now'),bond_gain_today=0,
+                last_cared_date=date('now'),last_decay_date=date('now')
+            WHERE singleton=1
+            """,
             (care.get('fullness'), care.get('mood'), care.get('cleanliness'), care.get('bond'), care.get('updated_at')),
         )
         con.commit()
@@ -359,7 +365,13 @@ def reset_reading_and_genetics(
         con.execute('DELETE FROM monster_encyclopedia')
         con.execute("INSERT INTO monster_encyclopedia(form_id) VALUES('starter')")
         con.execute(
-            'UPDATE monster_care SET fullness=65,mood=65,cleanliness=75,bond=0,updated_at=CURRENT_TIMESTAMP WHERE singleton=1'
+            """
+            UPDATE monster_care
+            SET fullness=65,mood=65,cleanliness=75,bond=0,updated_at=CURRENT_TIMESTAMP,
+                bond_gain_date=date('now'),bond_gain_today=0,
+                last_cared_date=date('now'),last_decay_date=date('now')
+            WHERE singleton=1
+            """
         )
         if reset_settings:
             con.execute('DELETE FROM app_settings')

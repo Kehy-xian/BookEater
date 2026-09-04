@@ -24,6 +24,17 @@ _TRANSPARENT = '#ff00fe'
 _INTERRUPT_STATES = {'eat', 'spit_memory', 'drop', 'snack', 'delicious', 'play', 'wash'}
 
 
+def _has_final_consonant(text: str) -> bool:
+    if not text:
+        return False
+    code = ord(text[-1])
+    return 0xAC00 <= code <= 0xD7A3 and (code - 0xAC00) % 28 != 0
+
+
+def _quoted_with_object_particle(text: str) -> str:
+    return f'“{text}”' + ('을' if _has_final_consonant(text) else '를')
+
+
 class DesktopPetWindow:
     def __init__(self, runtime: BookEaterRuntime):
         import tkinter as tk
@@ -88,7 +99,7 @@ class DesktopPetWindow:
         self.menu.add_command(label='기록 먹이기', command=self.open_feed_panel)
         self.menu.add_command(label='내 서재', command=self.open_library_panel)
         self.menu.add_command(label='내 몬스터 정보 보기', command=self.open_profile_panel)
-        self.menu.add_command(label='집에 보내기 (트레이 축소)', command=self._send_home_to_tray)
+        self.menu.add_command(label='휴식하기(트레이 축소)', command=self._send_home_to_tray)
         self.menu.add_separator()
         self.menu.add_command(label='종료', command=self._confirm_exit)
         self.root.protocol('WM_DELETE_WINDOW', self._confirm_exit)
@@ -100,6 +111,18 @@ class DesktopPetWindow:
         self.root.after(70, self._roam_tick)
         self.root.after(100, self._poll_results)
         self.root.after(900, self._retry_pending_async)
+
+    def _monster_name(self) -> str:
+        return (self.runtime.settings.get('monster_name', '') or '').strip()
+
+    def _monster_label(self) -> str:
+        return self._monster_name() or '내 몬스터'
+
+    def _monster_subject(self) -> str:
+        name = self._monster_name()
+        if not name:
+            return '내 몬스터가'
+        return name + ('이가' if _has_final_consonant(name) else '가')
 
     def _work_area(self) -> WorkArea:
         """Best available visible desktop work area.
@@ -138,6 +161,7 @@ class DesktopPetWindow:
             target_y=self._motion.target_y,
             facing=self._motion.facing,
             hold_ticks=self._motion.hold_ticks,
+            vertical_direction=self._motion.vertical_direction,
         )
         self.root.geometry(f'+{x}+{y}')
 
@@ -202,7 +226,7 @@ class DesktopPetWindow:
         from tkinter import messagebox
         if messagebox.askyesno(
             '책먹는 몬스터 종료',
-            '책먹는 몬스터를 정말 종료할까요?\n계속 곁에 두려면 “아니요”를 눌러 주세요.',
+            '책먹는 몬스터를 정말 종료할까요?',
             parent=self.root,
         ):
             if self._tray_icon is not None:
@@ -218,7 +242,7 @@ class DesktopPetWindow:
         from tkinter import messagebox
         if self._open_panels:
             messagebox.showinfo(
-                '열린 창이 있어요', '열린 창을 먼저 닫은 뒤 집에 보내 주세요.', parent=self.root,
+                '열린 창이 있어요', '열린 창을 닫은 뒤 실행해 주세요.', parent=self.root,
             )
             return
         if self._tray_icon is not None:
@@ -235,12 +259,13 @@ class DesktopPetWindow:
             draw.ellipse((37, 22, 45, 30), fill='#29241f')
             draw.arc((20, 27, 44, 45), 15, 165, fill='#29241f', width=3)
             menu = pystray.Menu(
-                pystray.MenuItem('돌아오기', lambda _icon, _item: self._result_queue.put(('tray_restore', None)), default=True),
+                pystray.MenuItem('바탕화면에 꺼내주기', lambda _icon, _item: self._result_queue.put(('tray_restore', None)), default=True),
                 pystray.MenuItem('종료', lambda _icon, _item: self._result_queue.put(('tray_exit', None))),
             )
             self._tray_icon = pystray.Icon('BookEater', image, '책먹는 몬스터', menu)
             threading.Thread(target=self._tray_icon.run, name='bookeater-tray', daemon=True).start()
             self.root.withdraw()
+            self.root.after(180, self._notify_tray_restored)
         except Exception:
             self._tray_icon = None
             messagebox.showinfo(
@@ -249,6 +274,18 @@ class DesktopPetWindow:
                 parent=self.root,
             )
             self.root.iconify()
+
+    def _notify_tray_restored(self) -> None:
+        if self._tray_icon is None:
+            return
+        try:
+            self._tray_icon.notify(
+                '언제든지 바탕화면에 다시 불러올 수 있어요.',
+                '트레이 아이콘으로 되돌아갔어요.',
+            )
+            self.root.after(2000, lambda: self._tray_icon and self._tray_icon.remove_notification())
+        except Exception:
+            pass
 
     def _restore_from_tray(self) -> None:
         if self._tray_icon is not None:
@@ -340,8 +377,10 @@ class DesktopPetWindow:
                     state='idle', facing=self._motion.facing, hold_ticks=8,
                 )
         self._draw()
-        spec = GEULSSIAL_ANIMATIONS.get(self._pet_state)
-        self.root.after(spec.frame_ms if spec is not None else 150, self._tick)
+        display_state = {'run': 'walk', 'sit': 'idle'}.get(self._pet_state, self._pet_state)
+        spec = GEULSSIAL_ANIMATIONS.get(display_state)
+        frame_ms = 85 if self._pet_state == 'run' else (spec.frame_ms if spec is not None else 150)
+        self.root.after(frame_ms, self._tick)
 
     def _draw(self) -> None:
         """Vector fallback renderer used until approved PNG sprite frames are integrated."""

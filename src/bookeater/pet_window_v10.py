@@ -18,9 +18,73 @@ class DesktopPetWindowV10(DesktopPetWindowV9):
     def __init__(self, runtime: BookEaterRuntime):
         self._recommendation_busy = False
         super().__init__(runtime)
-        # Insert before the Data Management cascade so ordinary play actions remain grouped.
-        end = self.menu.index('end')
-        self.menu.insert_command(max(0, end - 1), label='책 추천', command=self.open_recommendation_panel)
+        self._rebuild_main_menu()
+
+    def _rebuild_main_menu(self) -> None:
+        self.menu.delete(0, 'end')
+        name = self._monster_name()
+        label = name or '몬스터'
+        self.menu.add_command(label='기록 먹이기', command=self.open_feed_panel)
+        self.menu.add_command(label='기억 꺼내기', command=self.open_memory_panel)
+        self.menu.add_command(label='책 추천받기', command=self.open_recommendation_panel)
+        self.menu.add_command(label='내 서재', command=self.open_library_panel)
+        self.menu.add_separator()
+        self.menu.add_command(
+            label='몬스터 이름 다시 짓기' if name else '몬스터 이름 짓기',
+            command=self.open_monster_name_panel,
+        )
+        self.menu.add_command(label='몬스터 도감', command=self.open_encyclopedia_panel)
+        self.menu.add_command(label=f'{label} 정보 보기', command=self.open_profile_panel)
+        self.menu.add_command(label=f'{label} 돌보기', command=self.open_care_panel)
+        self.menu.add_command(label='휴식하기(트레이 축소)', command=self._send_home_to_tray)
+        self.menu.add_separator()
+        data_menu = self.tk.Menu(self.menu, tearoff=0)
+        data_menu.add_command(label='기록 내보내기', command=self.export_reading_seed)
+        data_menu.add_command(label='기록 읽기', command=self.plant_reading_seed)
+        data_menu.add_separator()
+        data_menu.add_command(label='전체 초기화', command=self.reset_reading_profile)
+        self.menu.add_cascade(label='데이터 관리', menu=data_menu)
+        self.menu.add_command(label='설정', command=self.open_settings_panel)
+        self.menu.add_command(label='종료', command=self._confirm_exit)
+
+    def open_monster_name_panel(self) -> None:
+        tk, ttk = self.tk, self.ttk
+        current = self._monster_name()
+        win = self._new_panel('몬스터 이름 다시 짓기' if current else '몬스터 이름 짓기')
+        win.transient(self.root)
+        body = ttk.Frame(win, padding=16)
+        body.pack(fill='both', expand=True)
+        ttk.Label(body, text='몬스터 이름', font=('', 14, 'bold')).pack(anchor='w')
+        name_var = tk.StringVar(value=current)
+        entry = ttk.Entry(body, textvariable=name_var, width=28)
+        entry.pack(fill='x', pady=(8, 5))
+        msg = tk.StringVar(value='12자까지 지을 수 있어요.')
+        ttk.Label(body, textvariable=msg).pack(anchor='w')
+        actions = ttk.Frame(body)
+        actions.pack(fill='x', pady=(14, 0))
+
+        def save() -> None:
+            name = ' '.join(name_var.get().split())
+            if not name:
+                msg.set('이름을 입력해 주세요.')
+                return
+            if len(name) > 12:
+                msg.set('이름은 12자까지 지을 수 있어요.')
+                return
+            self.runtime.settings.set('monster_name', name)
+            self._rebuild_main_menu()
+            win.destroy()
+
+        def reset_name() -> None:
+            self.runtime.settings.delete('monster_name')
+            self._rebuild_main_menu()
+            win.destroy()
+
+        ttk.Button(actions, text='변경하기' if current else '이름 짓기', command=save).pack(side='right')
+        if current:
+            ttk.Button(actions, text='이름만 초기화', command=reset_name).pack(side='right', padx=(0, 6))
+        entry.bind('<Return>', lambda _event: save())
+        entry.focus_set()
 
     def _data_action_available(self) -> bool:
         if self._recommendation_busy:
@@ -210,7 +274,7 @@ class DesktopPetWindowV10(DesktopPetWindowV9):
                 msg.set('조회 서버가 연결되지 않았어요. 직접 입력하기를 사용해 주세요.')
                 return
             search_button.configure(state='disabled')
-            msg.set('실재 도서를 조회하는 중…')
+            msg.set('실제 도서를 조회하는 중…')
 
             def work() -> None:
                 try:
@@ -222,6 +286,10 @@ class DesktopPetWindowV10(DesktopPetWindowV9):
 
         ttk.Button(actions, text='선택한 책 등록', command=choose_result).pack(side='right')
         ttk.Button(actions, text='직접 입력하기', command=manual_entry).pack(side='right', padx=(0, 6))
+        ttk.Label(
+            body,
+            text='도서 DB 제공 : 알라딘 인터넷서점(www.aladin.co.kr)',
+        ).pack(anchor='e', pady=(8, 0))
         search_button.configure(command=search)
         query_entry.bind('<Return>', lambda _event: search())
         tree.bind('<Double-Button-1>', lambda _event: choose_result())
@@ -233,16 +301,16 @@ class DesktopPetWindowV10(DesktopPetWindowV9):
         win = self._new_panel('책 추천', '610x540')
         body = ttk.Frame(win, padding=16)
         body.pack(fill='both', expand=True)
-        ttk.Label(body, text='내 몬스터가 고른 실재 도서', font=('', 18, 'bold')).pack(anchor='w')
+        ttk.Label(body, text=f'{self._monster_subject()} 책을 추천해줘요', font=('', 18, 'bold')).pack(anchor='w')
         ttk.Label(
             body,
-            text='후보 도서는 카탈로그 서버에서 받고, 내 독서 성향과 비교하는 작업은 이 PC 안에서만 합니다.',
+            text='기록을 토대로 독서 성향을 파악하고, 책을 추천받을 수 있어요.',
             wraplength=560,
         ).pack(anchor='w', pady=(3, 10))
 
         controls = ttk.Frame(body)
         controls.pack(fill='x')
-        status_var = tk.StringVar(value='추천 방식을 골라 주세요.')
+        status_var = tk.StringVar(value='')
         result_wrap = ttk.Frame(body)
         result_wrap.pack(fill='both', expand=True, pady=(12, 6))
         result_canvas = tk.Canvas(result_wrap, highlightthickness=0)
@@ -261,12 +329,16 @@ class DesktopPetWindowV10(DesktopPetWindowV9):
             lambda event: result_canvas.itemconfigure(holder_window, width=event.width),
         )
         ttk.Label(body, textvariable=status_var, wraplength=560).pack(anchor='w')
+        ttk.Label(
+            body,
+            text='도서 DB 제공 : 알라딘 인터넷서점(www.aladin.co.kr)',
+        ).pack(anchor='e', pady=(4, 0))
 
         client = configured_catalog_client()
         if client is None:
             ttk.Label(
                 result_holder,
-                text='아직 실재 도서 카탈로그 서버가 연결되지 않았어요.\n연결되기 전에는 임의의 책을 추천하지 않습니다.',
+                text='아직 실제 도서 카탈로그 서버가 연결되지 않았어요.\n연결되기 전에는 임의의 책을 추천하지 않습니다.',
                 justify='center',
             ).pack(expand=True)
             status_var.set('추천 서버 연결을 기다리는 중입니다.')
@@ -329,7 +401,7 @@ class DesktopPetWindowV10(DesktopPetWindowV9):
                 if kind == 'cold':
                     status_var.set('아직 독서기록이 없어 현재 베스트셀러 순서로 보여드려요. 기록이 쌓이면 내 취향으로 정렬됩니다.')
                 else:
-                    status_var.set('실재 도서 후보를 로컬 독서 성향으로 정렬했어요.')
+                    status_var.set('실제 도서 후보를 독서 성향에 맞춰 정렬했어요.')
             elif kind == 'empty':
                 render([])
                 status_var.set('카탈로그에서 후보를 받지 못했어요. 나중에 다시 시도해 주세요.')
@@ -344,7 +416,7 @@ class DesktopPetWindowV10(DesktopPetWindowV9):
                 return
             self._recommendation_busy = True
             clear_results()
-            ttk.Label(result_holder, text='실재 도서 후보를 살펴보는 중…').pack(anchor='w')
+            ttk.Label(result_holder, text='실제 도서 후보를 살펴보는 중…').pack(anchor='w')
             status_var.set('후보 목록만 받아오고 있어요. 독서기록은 전송하지 않습니다.')
 
             def work() -> None:

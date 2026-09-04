@@ -7,6 +7,7 @@ sys.path.insert(0, str(ROOT / 'src'))
 from bookeater.pet_art import GEULSSIAL_ANIMATIONS, frame_filename
 from bookeater.pet_sprite import (
     TkSpriteCache,
+    _binary_alpha,
     asset_slug_for_form,
     default_override_root,
     production_animation_available,
@@ -15,6 +16,15 @@ from bookeater.pet_sprite import (
     sprite_source_form,
     visual_asset_slug_for_form,
 )
+
+
+def test_binary_alpha_removes_color_key_fringe():
+    from PIL import Image
+
+    image = Image.new('RGBA', (3, 1))
+    image.putdata(((80, 70, 60, 0), (80, 70, 60, 95), (80, 70, 60, 96)))
+    result = _binary_alpha(image)
+    assert [result.getpixel((x, 0))[3] for x in range(3)] == [0, 0, 255]
 
 
 def _write_complete(root: Path, slug: str, state: str, payload: bytes = b'placeholder') -> tuple[Path, ...]:

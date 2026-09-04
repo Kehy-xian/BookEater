@@ -76,7 +76,7 @@ class DesktopPetWindowV8(DesktopPetWindowV7):
     def _pose(self, state: str) -> tuple[int, int]:
         """Return body bob and alternating foot shift for a lightweight fallback animation."""
         frame = self._frame
-        if state == 'walk':
+        if state in {'walk', 'run'}:
             return (0, -2, 0, -2)[frame % 4], (5 if frame % 2 else -3)
         if state == 'eat':
             return (0, -3, -5, -1, 2, -2)[frame % 6], 0
@@ -272,8 +272,13 @@ class DesktopPetWindowV8(DesktopPetWindowV7):
                 radius = 6 + (self._frame + index) % 4
                 c.create_oval(x-radius, y-radius, x+radius, y+radius, outline='#72bcd4', width=2)
         elif state == 'bump':
-            side = 1 if self._motion.facing >= 0 else -1
-            c.create_text(95 + side * 63, 67, text='콩!', fill=self.palette.ink, font=('', 12, 'bold'))
+            vertical = self._motion.vertical_direction
+            if vertical:
+                x, y = 95, (28 if vertical < 0 else 158)
+            else:
+                side = 1 if self._motion.facing >= 0 else -1
+                x, y = 95 + side * 63, 67
+            c.create_text(x, y, text='콩!', fill=self.palette.ink, font=('', 12, 'bold'))
 
     def _draw(self) -> None:
         if self._sprite_cache is None:
@@ -284,14 +289,21 @@ class DesktopPetWindowV8(DesktopPetWindowV7):
         self._refresh_visual_identity()
         action_state = self._pet_state
         custom_action = action_state in {'snack', 'delicious', 'play', 'wash', 'bump', 'drop'}
-        sprite_state = action_state
+        sprite_state = {'run': 'walk', 'sit': 'idle'}.get(action_state, action_state)
+        mirror = getattr(getattr(self, '_motion', None), 'facing', 1) < 0
         frames = None
         if sprite_state in GEULSSIAL_ANIMATIONS:
-            frames = self._sprite_cache.frames(self._visual_form_id, sprite_state, scale=self._pet_scale)
+            frames = self._sprite_cache.frames(
+                self._visual_form_id, sprite_state,
+                scale=self._pet_scale, mirror=mirror,
+            )
         using_custom_action_frames = bool(custom_action and frames)
         if frames is None and custom_action:
             sprite_state = 'eat' if action_state == 'snack' else 'idle'
-            frames = self._sprite_cache.frames(self._visual_form_id, sprite_state, scale=self._pet_scale)
+            frames = self._sprite_cache.frames(
+                self._visual_form_id, sprite_state,
+                scale=self._pet_scale, mirror=mirror,
+            )
 
         if frames:
             c = self.canvas

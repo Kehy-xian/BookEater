@@ -2,11 +2,8 @@ from __future__ import annotations
 
 """Desktop-pet V6: optional first-meeting drop animation and per-user Windows autostart."""
 
-import os
 import queue
-import sys
 import threading
-import webbrowser
 
 from .pet_behavior import PetMotion
 from .pet_window_v5 import DesktopPetWindowV5
@@ -18,7 +15,6 @@ from .services.update_install import (
     launch_verified_installer,
 )
 from .services.windows_autostart import can_enable_autostart, is_autostart_enabled, set_autostart
-from .pet_sprite import default_override_root
 from .version import APP_VERSION
 
 
@@ -87,7 +83,7 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
 
     def open_settings_panel(self) -> None:
         tk, ttk = self.tk, self.ttk
-        win = self._new_panel('설정', '470x600')
+        win = self._new_panel('설정', '470x550')
         body = ttk.Frame(win, padding=18)
         body.pack(fill='both', expand=True)
         ttk.Label(body, text='설정', font=('', 18, 'bold')).pack(anchor='w')
@@ -105,8 +101,6 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
             variable=intro_var,
             command=toggle_intro,
         ).pack(anchor='w', pady=(14, 5))
-
-        ttk.Label(body, text='변경한 설정은 다음 실행에도 그대로 적용됩니다.').pack(anchor='w')
 
         auto_available = can_enable_autostart()
         auto_var = tk.BooleanVar(value=is_autostart_enabled() if auto_available else False)
@@ -149,31 +143,20 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
             ttk.Radiobutton(
                 size_row, text=label, value=value, variable=size_var, command=change_size,
             ).pack(side='left', padx=(0, 8))
-
-        def open_art_folder() -> None:
-            folder = default_override_root(self.runtime.data_dir)
-            try:
-                folder.mkdir(parents=True, exist_ok=True)
-                if sys.platform.startswith('win'):
-                    os.startfile(folder)  # type: ignore[attr-defined]
-                else:
-                    webbrowser.open(folder.as_uri())
-                msg.set('이미지 교체 폴더를 열었어요. 완성된 프레임 세트를 넣고 앱을 다시 실행해 주세요.')
-            except Exception:
-                msg.set(f'폴더를 열지 못했어요. 직접 열어 주세요: {folder}')
-
-        ttk.Button(body, text='이미지 교체 폴더 열기', command=open_art_folder).pack(anchor='w', pady=(12, 0))
+        ttk.Label(
+            body,
+            text='변경한 설정은 다음 실행에도 그대로 적용됩니다.',
+        ).pack(anchor='w', pady=(14, 0))
 
         ttk.Separator(body).pack(fill='x', pady=(18, 10))
+        ttk.Label(body, text=f'현재 버전 {APP_VERSION}').pack(anchor='w')
         update_row = ttk.Frame(body)
-        update_row.pack(fill='x')
-        ttk.Label(update_row, text=f'현재 버전 {APP_VERSION}').pack(side='left')
+        update_row.pack(fill='x', pady=(8, 0))
         update_manifest = {'value': None}
+        update_button = ttk.Button(update_row, text='업데이트 확인')
+        update_button.pack(side='left')
         download_button = ttk.Button(update_row, text='업데이트 받기', state='disabled')
-        download_button.pack(side='right')
-
-        update_button = ttk.Button(body, text='업데이트 확인')
-        update_button.pack(anchor='w', pady=(7, 0))
+        download_button.pack(side='left', padx=(6, 0))
         update_results: queue.Queue[tuple[str, object]] = queue.Queue()
         update_polling = {'active': False}
 
@@ -308,11 +291,13 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
         download_button.configure(command=download_update)
         ttk.Label(
             body,
-            text='확인·다운로드·설치는 각각 사용자가 선택해야 진행됩니다. 설치 전 파일 해시를 다시 확인합니다.',
+            text='업데이트 확인: 새 업데이트 버전이 있는지 확인\n'
+                 '업데이트 받기: 업데이트를 수동으로 진행',
             wraplength=380,
-        ).pack(anchor='w', pady=(5, 0))
+            justify='left',
+        ).pack(anchor='w', pady=(8, 0))
 
-        ttk.Label(body, textvariable=msg, wraplength=380).pack(anchor='w', pady=(16, 0))
+        ttk.Label(body, textvariable=msg, wraplength=380, justify='left').pack(anchor='w', pady=(14, 0))
 
 
 def run_pet_v6(*, runtime_factory=bootstrap_runtime) -> int:
