@@ -3,6 +3,7 @@ from __future__ import annotations
 """Desktop-pet V6: optional first-meeting drop animation and per-user Windows autostart."""
 
 import queue
+import random
 import threading
 
 from .pet_behavior import PetMotion
@@ -14,6 +15,8 @@ from .services.update_install import (
     download_verified_installer,
     launch_verified_installer,
 )
+from .services.birth_imprint import create_birth_imprint
+from .services.catalog import configured_catalog_client
 from .services.windows_autostart import can_enable_autostart, is_autostart_enabled, set_autostart
 from .version import APP_VERSION
 
@@ -30,6 +33,9 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
         self.root.after(220, self._maybe_start_first_drop)
 
     def _maybe_start_first_drop(self) -> None:
+        if not self.runtime.settings.get_bool('intro_seen', False):
+            self._open_birth_onboarding()
+            return
         enabled = self.runtime.settings.get_bool('intro_drop_enabled', True)
         if not enabled:
             area = self._work_area()
@@ -49,6 +55,203 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
         self._motion = PetMotion(target_x, self._drop_y, state='drop', facing=1)
         self.root.geometry(f'+{target_x}+{self._drop_y}')
         self.root.after(35, self._drop_step)
+
+    def _open_birth_onboarding(self) -> None:
+        """Run the one-time birth ritual before exposing the roaming desktop pet."""
+        tk, ttk = self.tk, self.ttk
+        self.root.withdraw()
+        win = tk.Toplevel(self.root)
+        win.title('북이터의 탄생')
+        win.geometry('560x520')
+        win.resizable(False, False)
+        win.attributes('-topmost', True)
+        win.protocol('WM_DELETE_WINDOW', self.root.destroy)
+
+        canvas = tk.Canvas(win, width=560, height=330, bg='#070a22', highlightthickness=0)
+        canvas.pack(fill='x')
+        rng = random.Random(2718)
+        for _ in range(95):
+            x, y = rng.randrange(8, 552), rng.randrange(8, 322)
+            radius = rng.choice((1, 1, 1, 2))
+            color = rng.choice(('#ffffff', '#9fc5ff', '#d8c7ff', '#ffe8b5'))
+            canvas.create_oval(x-radius, y-radius, x+radius, y+radius, fill=color, outline='')
+        canvas.create_oval(175, 54, 385, 264, fill='#18204a', outline='')
+        canvas.create_oval(196, 75, 364, 243, fill='#252c5e', outline='')
+
+        egg = canvas.create_oval(
+            237, 105, 323, 250, fill='#f4edda', outline='#c9bda4', width=3, tags='egg',
+        )
+        canvas.create_arc(
+            249, 132, 311, 210, start=200, extent=140, style='arc',
+            outline='#ded3ba', width=2, tags='egg',
+        )
+        text_var = tk.StringVar(value='')
+        text = ttk.Label(win, textvariable=text_var, font=('', 13), anchor='center', justify='center')
+        text.pack(fill='x', padx=28, pady=(16, 8))
+        controls = ttk.Frame(win, padding=(28, 0, 28, 18))
+        controls.pack(fill='both', expand=True)
+
+        alive = {'yes': True}
+        sway = {'step': 0}
+        def animate_egg() -> None:
+            if not alive['yes']:
+                return
+            phase = (-2, -1, 0, 1, 2, 1, 0, -1)[sway['step'] % 8]
+            current = canvas.coords(egg)
+            center = (current[0] + current[2]) / 2
+            canvas.move('egg', 280 + phase - center, 0)
+            sway['step'] += 1
+            win.after(110, animate_egg)
+        animate_egg()
+
+        jobs: list[str] = []
+        def clear_controls() -> None:
+            for child in controls.winfo_children():
+                child.destroy()
+
+        def type_text(message: str, done=None, *, delay: int = 42) -> None:
+            text_var.set('')
+            def step(index: int = 0) -> None:
+                if not alive['yes']:
+                    return
+                text_var.set(message[:index])
+                if index <= len(message):
+                    jobs.append(win.after(delay, lambda: step(index + 1)))
+                elif done is not None:
+                    jobs.append(win.after(900, done))
+            step()
+
+        favorite_var = tk.StringVar()
+        name_var = tk.StringVar()
+
+        def ask_favorite() -> None:
+            type_text(
+                '가장 좋아하는 책 이름을 이야기하면\n무언가 태어나지 않을까?',
+                show_favorite_entry,
+            )
+
+        def show_favorite_entry() -> None:
+            clear_controls()
+            entry = ttk.Entry(controls, textvariable=favorite_var, font=('', 12))
+            entry.pack(fill='x', pady=(4, 8))
+            button = ttk.Button(controls, text='이야기하기', command=accept_favorite)
+            button.pack()
+            entry.bind('<Return>', lambda _event: accept_favorite())
+            entry.focus_set()
+
+        def accept_favorite() -> None:
+            favorite = ' '.join(favorite_var.get().split())
+            if not favorite:
+                return
+            clear_controls()
+            self.runtime.settings.set('favorite_book_title', favorite)
+            threading.Thread(
+                target=lambda: create_birth_imprint(
+                    self.runtime, favorite, client=configured_catalog_client(),
+                ),
+                name='bookeater-birth-imprint', daemon=True,
+            ).start()
+            type_text('이름을 붙여주세요.', show_name_entry)
+
+        def show_name_entry() -> None:
+            clear_controls()
+            entry = ttk.Entry(controls, textvariable=name_var, font=('', 12))
+            entry.pack(fill='x', pady=(4, 8))
+            button = ttk.Button(controls, text='이름 붙이기', command=accept_name)
+            button.pack()
+            entry.bind('<Return>', lambda _event: accept_name())
+            entry.focus_set()
+
+        def accept_name() -> None:
+            name = ' '.join(name_var.get().split())
+            if not name or len(name) > 12:
+                text_var.set('이름은 1자 이상 12자까지 붙일 수 있어요.')
+                return
+            self.runtime.settings.set('monster_name', name)
+            clear_controls()
+            glow_birth()
+
+        def glow_birth(step: int = 0) -> None:
+            if not alive['yes']:
+                return
+            if step < 9:
+                radius = 50 + step * 13
+                color = ('#fff6d5', '#ffeaa3', '#fffbe8')[step % 3]
+                canvas.create_oval(280-radius, 178-radius, 280+radius, 178+radius,
+                                   outline=color, width=5, tags='glow')
+                canvas.tag_raise('egg')
+                win.after(85, lambda: glow_birth(step + 1))
+                return
+            canvas.delete('glow')
+            canvas.delete('egg')
+            self._start_birth_idle(canvas, win, alive)
+            type_text('우왓!', birth_message_one, delay=65)
+
+        def birth_message_one() -> None:
+            type_text(
+                '당신의 북이터가 무사히 태어났습니다.\n당신이 읽은 책과 당신의 생각을 꾸준히 먹이면',
+                birth_message_two,
+                delay=34,
+            )
+
+        def birth_message_two() -> None:
+            type_text('언젠가 멋진 몬스터로 자라날 거예요.', birth_message_three)
+
+        def birth_message_three() -> None:
+            type_text('잘 돌봐주세요.', finish_birth)
+
+        def finish_birth() -> None:
+            alive['yes'] = False
+            self.runtime.settings.set_bool('intro_seen', True)
+            rebuild = getattr(self, '_rebuild_main_menu', None)
+            if callable(rebuild):
+                rebuild()
+            win.destroy()
+            area = self._work_area()
+            x, _ = self._roam.clamp_position(self._motion.x, self._motion.y, area)
+            y = self._roam.floor_y(area)
+            self._motion = PetMotion(x, y, state='idle', facing=1, hold_ticks=18)
+            self._pet_state = 'idle'
+            self.root.geometry(f'+{x}+{y}')
+            self.root.deiconify()
+            self.root.lift()
+
+        type_text('곧 깨어날 것 같다...!', ask_favorite)
+
+    def _draw_born_paperling(self, canvas) -> None:
+        """Small vector birth illustration; the roaming window switches to production IDLE art."""
+        x, y = 280, 178
+        canvas.create_oval(x-51, y+52, x+51, y+66, fill='#11162f', outline='')
+        canvas.create_polygon(x+41, y+4, x+70, y-8, x+60, y+27, x+49, y+21,
+                              fill='#b95f55', outline='#29241f', width=2)
+        canvas.create_oval(x-54, y-55, x+54, y+55, fill='#f4edda', outline='#29241f', width=3)
+        canvas.create_oval(x-25, y+43, x-6, y+57, fill='#ded3ba', outline='#29241f', width=2)
+        canvas.create_oval(x+6, y+43, x+25, y+57, fill='#ded3ba', outline='#29241f', width=2)
+        canvas.create_oval(x-23, y-18, x-13, y-8, fill='#25211e', outline='')
+        canvas.create_oval(x+13, y-18, x+23, y-8, fill='#25211e', outline='')
+        canvas.create_arc(x-19, y-2, x+19, y+23, start=200, extent=140,
+                          style='arc', outline='#25211e', width=3)
+
+    def _start_birth_idle(self, canvas, win, alive: dict[str, bool]) -> None:
+        """Show the same four-frame breathing animation used by the desktop pet."""
+        paths = [
+            resource_root() / 'resources' / 'sprites' / f'paperling_idle_{index:02d}.png'
+            for index in range(4)
+        ]
+        try:
+            images = [self.tk.PhotoImage(file=str(path)) for path in paths]
+        except Exception:
+            self._draw_born_paperling(canvas)
+            return
+        self._birth_idle_images = images
+        item = canvas.create_image(280, 175, image=images[0], anchor='center')
+
+        def animate(index: int = 0) -> None:
+            if not alive['yes']:
+                return
+            canvas.itemconfigure(item, image=images[index % len(images)])
+            win.after(420, lambda: animate(index + 1))
+        animate()
 
     def _drop_step(self) -> None:
         if not self._intro_dropping or self._pet_state != 'drop' or not self.root.winfo_exists():

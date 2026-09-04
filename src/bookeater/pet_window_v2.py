@@ -9,12 +9,8 @@ later without changing the panels or reading pipeline.
 
 from .game.encyclopedia_view import build_encyclopedia_rows
 from .game.form_catalog import catalog_entry
-from .game.growth_routes import ALL_GROWTH_FORMS
 from .pet_window import DesktopPetWindow, _INTERRUPT_STATES
-from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime
-
-
-_STAGE_LABELS = {0: '기본', 1: '1차', 2: '2차', 3: '최종'}
+from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime, resource_root
 
 
 class DesktopPetWindowV2(DesktopPetWindow):
@@ -26,27 +22,28 @@ class DesktopPetWindowV2(DesktopPetWindow):
     def open_encyclopedia_panel(self) -> None:
         ttk = self.ttk
         encountered = self.runtime.encyclopedia.encountered_ids()
-        rows = build_encyclopedia_rows(encountered)
-        win = self._new_panel('몬스터 도감', '700x570')
+        state = self.runtime.store.load_state()
+        rows = build_encyclopedia_rows(encountered, current_form=state.form_id)
+        win = self._new_panel('몬스터 도감', '760x520')
         body = ttk.Frame(win, padding=14)
         body.pack(fill='both', expand=True)
 
         ttk.Label(body, text='몬스터 도감', font=('', 18, 'bold')).pack(anchor='w')
-        ttk.Label(
-            body,
-            text=f'만난 모습 {len(encountered)} / {len(ALL_GROWTH_FORMS)} · 가지를 펼치면 이어지는 혈통을 볼 수 있어요.',
-        ).pack(anchor='w', pady=(2, 10))
+        ttk.Label(body, text=f'지금까지 만난 모습 {len(encountered)}').pack(anchor='w', pady=(2, 10))
 
-        tree_wrap = ttk.Frame(body)
-        tree_wrap.pack(fill='both', expand=True)
-        columns = ('stage', 'status')
-        tree = ttk.Treeview(tree_wrap, columns=columns, show='tree headings', height=15, selectmode='browse')
-        tree.heading('#0', text='모습 / 혈통')
-        tree.heading('stage', text='성장')
+        content = ttk.Panedwindow(body, orient='horizontal')
+        content.pack(fill='both', expand=True)
+        tree_wrap = ttk.Frame(content, padding=(0, 0, 8, 0))
+        detail_wrap = ttk.Frame(content, padding=(12, 0, 0, 0))
+        content.add(tree_wrap, weight=2)
+        content.add(detail_wrap, weight=3)
+        tree = ttk.Treeview(
+            tree_wrap, columns=('status',), show='tree headings', height=15, selectmode='browse',
+        )
+        tree.heading('#0', text='모습')
         tree.heading('status', text='상태')
-        tree.column('#0', width=300, anchor='w')
-        tree.column('stage', width=70, anchor='center', stretch=False)
-        tree.column('status', width=210, anchor='w')
+        tree.column('#0', width=180, anchor='w')
+        tree.column('status', width=80, anchor='center', stretch=False)
         scroll = ttk.Scrollbar(tree_wrap, orient='vertical', command=tree.yview)
         tree.configure(yscrollcommand=scroll.set)
         tree.pack(side='left', fill='both', expand=True)
@@ -60,35 +57,45 @@ class DesktopPetWindowV2(DesktopPetWindow):
                 parent_iid,
                 'end',
                 text=row.name,
-                values=(_STAGE_LABELS.get(row.tier, str(row.tier)), row.status),
+                values=(row.status,),
                 open=True,
             )
             form_to_item[row.form_id] = iid
             item_to_row[iid] = row
 
-        detail = ttk.Label(
-            body,
-            text='항목을 선택하면 몬스터 모습에 대한 짧은 힌트를 볼 수 있어요.',
-            wraplength=650,
-            justify='left',
-        )
-        detail.pack(fill='x', pady=(10, 0))
+        art = self.tk.Canvas(detail_wrap, width=300, height=285, bg='#fffaf0', highlightthickness=0)
+        art.pack(fill='x')
+        name_label = ttk.Label(detail_wrap, text='', font=('', 15, 'bold'))
+        name_label.pack(anchor='w', pady=(10, 4))
+        detail = ttk.Label(detail_wrap, text='', wraplength=390, justify='left')
+        detail.pack(fill='x')
+        art_images: list[object] = []
 
         def show_detail(_event=None) -> None:
             selected = tree.selection()
             if not selected:
                 return
             row = item_to_row[selected[0]]
+            art.delete('all')
+            name_label.configure(text=row.name)
             if not row.found:
                 detail.configure(text=row.hint)
+                art.create_text(150, 135, text='?', fill='#8b8176', font=('', 72, 'bold'))
                 return
-            if row.sprite_ready:
-                art_note = '현재 게임에서 사용하는 아트가 준비되어 있다. 디자인은 이후에도 교체될 수 있다.'
-            elif row.concept_approved:
-                art_note = '현재 콘셉트는 확정됐고 실제 게임용 스프라이트를 준비 중이다.'
-            else:
-                art_note = '이 진화형의 이미지 자리는 확보되어 있으며 아트는 추후 업데이트된다.'
-            detail.configure(text=f'{row.hint}\n{art_note}')
+            entry = catalog_entry(row.form_id)
+            favorite = (self.runtime.settings.get('favorite_book_title', '') or '').strip()
+            extra = f'\n가장 좋아하는 책: {favorite}' if row.form_id == 'starter' and favorite else ''
+            detail.configure(text=f'{row.hint}{extra}')
+            if entry.asset_slug:
+                path = resource_root() / 'resources' / 'sprites' / f'{entry.asset_slug}_idle_00.png'
+                try:
+                    image = self.tk.PhotoImage(file=str(path))
+                    art_images.append(image)
+                    art.create_image(150, 142, image=image, anchor='center')
+                    return
+                except Exception:
+                    pass
+            art.create_text(150, 135, text=row.name, fill='#29241f', font=('', 20, 'bold'))
 
         tree.bind('<<TreeviewSelect>>', show_detail)
         starter_iid = form_to_item.get('starter')
@@ -117,7 +124,7 @@ class DesktopPetWindowV2(DesktopPetWindow):
             ('처음 만난 날', self._date_only(milestones.met_at)),
             ('첫 기록을 먹인 날', self._date_only(milestones.first_fed_at)),
             ('함께 쌓은 기록', f'{state.entry_count}개'),
-            ('도감에서 만난 모습', f'{len(encountered)} / {len(ALL_GROWTH_FORMS)}'),
+            ('도감에서 만난 모습', f'{len(encountered)}'),
         )
         for row, (label, value) in enumerate(rows):
             ttk.Label(info, text=label).grid(row=row, column=0, sticky='w', pady=3)

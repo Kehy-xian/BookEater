@@ -223,6 +223,8 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
             f'초기화 전 백업: {backup}',
             parent=self.root,
         )
+        # A full reset returns to the actual first meeting, not merely an empty roaming state.
+        self.root.after(120, self._open_birth_onboarding)
 
 
 def run_pet_v9(*, runtime_factory=bootstrap_runtime) -> int:

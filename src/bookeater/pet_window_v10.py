@@ -30,7 +30,7 @@ class DesktopPetWindowV10(DesktopPetWindowV9):
         self.menu.add_command(label='내 서재', command=self.open_library_panel)
         self.menu.add_separator()
         self.menu.add_command(
-            label='몬스터 이름 다시 짓기' if name else '몬스터 이름 짓기',
+            label='새로 이름 붙이기',
             command=self.open_monster_name_panel,
         )
         self.menu.add_command(label='몬스터 도감', command=self.open_encyclopedia_panel)
