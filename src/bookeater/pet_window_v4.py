@@ -30,6 +30,7 @@ class DesktopPetWindowV4(DesktopPetWindowV3):
                 state.form_id,
                 state.entry_count,
                 bond=self.runtime.care.load().bond,
+                stats=state.stats,
                 rng=self._dialogue_rng,
             )
             self._talk_cycle = cycle

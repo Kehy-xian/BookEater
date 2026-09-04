@@ -2,12 +2,27 @@ from __future__ import annotations
 
 """Desktop-pet V8: route-aware production sprites with lineage-safe vector fallback."""
 
+import textwrap
+
 from .pet_art import GEULSSIAL_ANIMATIONS
 from .pet_fallback_forms import approved_visual_form, fallback_family, fallback_variant
 from .pet_sprite import TkSpriteCache
 from .pet_window_v7 import DesktopPetWindowV7
 from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime
 from .services.dialogue import choose_ambient_line, greeting_line
+
+
+def dialogue_layout(text: str) -> tuple[str, int, int]:
+    """Fit Korean dialogue inside the 190px pet canvas without clipping."""
+    clean = ' '.join(str(text).split())
+    width = 21 if len(clean) <= 42 else 18
+    lines = textwrap.wrap(clean, width=width, break_long_words=True, break_on_hyphens=False) or ['']
+    if len(lines) > 3:
+        lines = lines[:3]
+        lines[-1] = lines[-1][: max(1, width - 1)].rstrip() + '…'
+    font_size = 8 if len(lines) <= 2 else 7
+    height = 18 + len(lines) * (font_size + 4)
+    return '\n'.join(lines), font_size, height
 
 
 class DesktopPetWindowV8(DesktopPetWindowV7):
@@ -27,7 +42,8 @@ class DesktopPetWindowV8(DesktopPetWindowV7):
             return
         state = self.runtime.store.load_state()
         self._talk_line = greeting_line(
-            state.form_id, self.runtime.care.load().bond, rng=self._dialogue_rng,
+            state.form_id, self.runtime.care.load().bond,
+            entry_count=state.entry_count, stats=state.stats, rng=self._dialogue_rng,
         )
         self._talk_cycle = self._frame // 12
         self._pet_state = 'talk'
@@ -58,19 +74,22 @@ class DesktopPetWindowV8(DesktopPetWindowV7):
                 state.form_id,
                 state.entry_count,
                 bond=self.runtime.care.load().bond,
+                stats=state.stats,
                 rng=self._dialogue_rng,
             )
             self._talk_cycle = cycle
         c = self.canvas
-        c.create_rectangle(8, 6, 182, 54, fill='#fffaf0', outline='#c9bda4', width=1)
-        c.create_polygon(142, 54, 154, 54, 148, 64, fill='#fffaf0', outline='#c9bda4')
+        rendered, font_size, height = dialogue_layout(self._talk_line)
+        bottom = min(78, 6 + height)
+        c.create_rectangle(8, 6, 182, bottom, fill='#fffaf0', outline='#c9bda4', width=1)
+        c.create_polygon(142, bottom, 154, bottom, 148, bottom + 10, fill='#fffaf0', outline='#c9bda4')
         c.create_text(
-            95, 30,
-            text=self._talk_line,
+            95, (6 + bottom) // 2,
+            text=rendered,
             fill=self.palette.ink,
-            width=155,
+            width=160,
             justify='center',
-            font=('', 8),
+            font=('', font_size),
         )
 
     def _pose(self, state: str) -> tuple[int, int]:
@@ -279,6 +298,16 @@ class DesktopPetWindowV8(DesktopPetWindowV7):
                 side = 1 if self._motion.facing >= 0 else -1
                 x, y = 95 + side * 63, 67
             c.create_text(x, y, text='콩!', fill=self.palette.ink, font=('', 12, 'bold'))
+        elif state == 'surprised':
+            c.create_text(145, 48, text='!', fill=self.palette.ink, font=('', 18, 'bold'))
+        elif state == 'held':
+            sway = (-3, 0, 3, 0)[self._frame % 4]
+            c.create_line(95, 0, 95 + sway, 38, fill='#655b50', width=3)
+            c.create_oval(89 + sway, 31, 101 + sway, 43, fill='#d8d2c8', outline='#655b50')
+        elif state == 'landed':
+            c.create_text(145, 111, text='콩!', fill=self.palette.ink, font=('', 12, 'bold'))
+            c.create_arc(35, 137, 77, 157, start=190, extent=140, style='arc', outline='#8b7d69', width=2)
+            c.create_arc(113, 137, 155, 157, start=210, extent=140, style='arc', outline='#8b7d69', width=2)
 
     def _draw(self) -> None:
         if self._sprite_cache is None:
@@ -288,7 +317,9 @@ class DesktopPetWindowV8(DesktopPetWindowV7):
 
         self._refresh_visual_identity()
         action_state = self._pet_state
-        custom_action = action_state in {'snack', 'delicious', 'play', 'wash', 'bump', 'drop'}
+        custom_action = action_state in {
+            'snack', 'delicious', 'play', 'wash', 'bump', 'drop', 'surprised', 'held', 'landed',
+        }
         sprite_state = {'run': 'walk', 'sit': 'idle'}.get(action_state, action_state)
         mirror = getattr(getattr(self, '_motion', None), 'facing', 1) < 0
         frames = None
@@ -313,7 +344,14 @@ class DesktopPetWindowV8(DesktopPetWindowV7):
                 (0, -7, -13, -5)[self._frame % 4]
                 if action_state == 'play' and not using_custom_action_frames else 0
             )
-            c.create_image(95, 100 + bounce, image=image, anchor='center')
+            pose_y = 100 + bounce
+            if action_state == 'held':
+                pose_y += 12 + (-2, 0, 2, 0)[self._frame % 4]
+            elif action_state == 'landed':
+                pose_y += 13
+            elif action_state == 'surprised':
+                pose_y -= 8
+            c.create_image(95, pose_y, image=image, anchor='center')
             self._draw_dialogue_overlay()
             if not using_custom_action_frames:
                 self._draw_care_overlay(action_state)

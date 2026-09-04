@@ -17,22 +17,23 @@ from .book_choices import book_choice_map
 from .game.loop import FeedOutcome
 from .pet_art import GEULSSIAL_ANIMATIONS, PetPalette
 from .pet_behavior import PetMotion, RoamPlanner, WorkArea
+from .korean_text import has_final_consonant, named_subject, quoted_object
 from .runtime import BookEaterRuntime, RuntimeStartupError, bootstrap_runtime
 
 
 _TRANSPARENT = '#ff00fe'
-_INTERRUPT_STATES = {'eat', 'spit_memory', 'drop', 'snack', 'delicious', 'play', 'wash'}
+_INTERRUPT_STATES = {
+    'eat', 'spit_memory', 'drop', 'snack', 'delicious', 'play', 'wash',
+    'surprised', 'held', 'landed',
+}
 
 
 def _has_final_consonant(text: str) -> bool:
-    if not text:
-        return False
-    code = ord(text[-1])
-    return 0xAC00 <= code <= 0xD7A3 and (code - 0xAC00) % 28 != 0
+    return has_final_consonant(text)
 
 
 def _quoted_with_object_particle(text: str) -> str:
-    return f'“{text}”' + ('을' if _has_final_consonant(text) else '를')
+    return quoted_object(text)
 
 
 class DesktopPetWindow:
@@ -45,10 +46,11 @@ class DesktopPetWindow:
         self.runtime = runtime
         self.palette = PetPalette()
         try:
-            self._pet_scale = max(0.5, min(1.0, float(runtime.settings.get('pet_scale', '1.0') or '1.0')))
+            stored_scale = float(runtime.settings.get('pet_scale', '0.75') or '0.75')
+            self._pet_scale = 0.45 if stored_scale == 0.5 else max(0.45, min(1.25, stored_scale))
         except (TypeError, ValueError):
-            self._pet_scale = 1.0
-        self._pet_window_size = max(95, round(190 * self._pet_scale))
+            self._pet_scale = 0.75
+        self._pet_window_size = max(86, round(190 * self._pet_scale))
         self.root = tk.Tk()
         self.root.title('책먹는 몬스터')
         self.root.geometry(f'{self._pet_window_size}x{self._pet_window_size}+80+80')
@@ -69,6 +71,12 @@ class DesktopPetWindow:
         self._drag_x = 0
         self._drag_y = 0
         self._dragging = False
+        self._pointer_down = False
+        self._press_root_x = 0
+        self._press_root_y = 0
+        self._single_click_job = None
+        self._suppress_click_release = False
+        self._pose_serial = 0
         self._menu_open = False
         self._open_panels = 0
         self._frame = 0
@@ -92,7 +100,7 @@ class DesktopPetWindow:
         self.canvas.bind('<ButtonPress-1>', self._drag_start)
         self.canvas.bind('<B1-Motion>', self._drag_move)
         self.canvas.bind('<ButtonRelease-1>', self._drag_release)
-        self.canvas.bind('<Double-Button-1>', lambda _e: self.open_feed_panel())
+        self.canvas.bind('<Double-Button-1>', self._double_click)
         self.canvas.bind('<Button-3>', self._show_menu)
 
         self.menu = tk.Menu(self.root, tearoff=0)
@@ -122,7 +130,7 @@ class DesktopPetWindow:
         name = self._monster_name()
         if not name:
             return '내 몬스터가'
-        return name + ('이가' if _has_final_consonant(name) else '가')
+        return named_subject(name)
 
     def _work_area(self) -> WorkArea:
         """Best available visible desktop work area.
@@ -166,16 +174,36 @@ class DesktopPetWindow:
         self.root.geometry(f'+{x}+{y}')
 
     def _drag_start(self, event) -> None:
-        self._dragging = True
+        self._pointer_down = True
+        self._dragging = False
         self._drag_x = int(event.x)
         self._drag_y = int(event.y)
+        self._press_root_x = int(event.x_root)
+        self._press_root_y = int(event.y_root)
 
     def _drag_move(self, event) -> None:
+        if not self._pointer_down:
+            return
+        distance = abs(int(event.x_root) - self._press_root_x) + abs(int(event.y_root) - self._press_root_y)
+        if not self._dragging and distance < 5:
+            return
+        if not self._dragging:
+            self._cancel_single_click()
+            self._dragging = True
+            self._pet_state = 'held'
         x = self.root.winfo_pointerx() - self._drag_x
         y = self.root.winfo_pointery() - self._drag_y
         self.root.geometry(f'+{x}+{y}')
 
     def _drag_release(self, _event) -> None:
+        self._pointer_down = False
+        if self._suppress_click_release:
+            self._suppress_click_release = False
+            self._dragging = False
+            return
+        if not self._dragging:
+            self._schedule_single_click()
+            return
         self._dragging = False
         if hasattr(self, '_intro_dropping'):
             self._intro_dropping = False
@@ -201,10 +229,13 @@ class DesktopPetWindow:
         if self._motion.y >= self._manual_drop_target_y:
             self._motion = PetMotion(
                 self._motion.x, self._manual_drop_target_y,
-                state='bump', facing=self._motion.facing, hold_ticks=7,
+                state='landed', facing=self._motion.facing, hold_ticks=0,
             )
             self.root.geometry(f'+{self._motion.x}+{self._motion.y}')
-            self._pet_state = 'bump'
+            self._pet_state = 'landed'
+            self._pose_serial += 1
+            serial = self._pose_serial
+            self.root.after(520, lambda: self._finish_temporary_pose('landed', serial))
             return
         self._manual_drop_velocity = min(28, self._manual_drop_velocity + 3)
         next_y = min(self._manual_drop_target_y, self._motion.y + self._manual_drop_velocity)
@@ -213,6 +244,43 @@ class DesktopPetWindow:
         )
         self.root.geometry(f'+{self._motion.x}+{next_y}')
         self.root.after(24, self._manual_drop_step)
+
+    def _cancel_single_click(self) -> None:
+        if self._single_click_job is not None:
+            try:
+                self.root.after_cancel(self._single_click_job)
+            except Exception:
+                pass
+            self._single_click_job = None
+
+    def _schedule_single_click(self) -> None:
+        self._cancel_single_click()
+        self._single_click_job = self.root.after(260, self._show_surprised_pose)
+
+    def _show_surprised_pose(self) -> None:
+        self._single_click_job = None
+        if self._dragging or self._open_panels or self._busy:
+            return
+        self._pet_state = 'surprised'
+        self._pose_serial += 1
+        serial = self._pose_serial
+        self.root.after(520, lambda: self._finish_temporary_pose('surprised', serial))
+
+    def _finish_temporary_pose(self, expected: str, serial: int) -> None:
+        if self._pose_serial != serial or self._pet_state != expected:
+            return
+        self._pet_state = 'idle'
+        self._motion = PetMotion(
+            self._motion.x, self._motion.y, state='idle',
+            facing=self._motion.facing, hold_ticks=8,
+        )
+
+    def _double_click(self, _event) -> None:
+        self._cancel_single_click()
+        self._suppress_click_release = True
+        self._pointer_down = False
+        self._dragging = False
+        self.open_feed_panel()
 
     def _show_menu(self, event) -> None:
         self._menu_open = True
@@ -302,8 +370,8 @@ class DesktopPetWindow:
             self.canvas.scale('all', 0, 0, self._pet_scale, self._pet_scale)
 
     def _set_pet_scale(self, scale: float, *, persist: bool = True) -> None:
-        self._pet_scale = max(0.5, min(1.0, float(scale)))
-        self._pet_window_size = max(95, round(190 * self._pet_scale))
+        self._pet_scale = max(0.45, min(1.25, float(scale)))
+        self._pet_window_size = max(86, round(190 * self._pet_scale))
         if persist:
             self.runtime.settings.set('pet_scale', str(self._pet_scale))
         self._roam.window_width = self._pet_window_size

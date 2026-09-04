@@ -198,7 +198,7 @@ class DesktopPetWindowV9(DesktopPetWindowV8):
             backup = reset_profile(
                 self.runtime.database_path, data_dir=self.runtime.data_dir, reset_settings=True,
             )
-            self._set_pet_scale(1.0, persist=False)
+            self._set_pet_scale(0.75, persist=False)
             self._refresh_after_profile_change()
             if hasattr(self, '_rebuild_main_menu'):
                 self._rebuild_main_menu()

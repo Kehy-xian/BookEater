@@ -180,7 +180,7 @@ class TkSpriteCache:
     def frames(
         self, form_id: str, state: str, *, scale: float = 1.0, mirror: bool = False,
     ) -> tuple[Any, ...] | None:
-        scale = max(0.5, min(1.0, float(scale)))
+        scale = max(0.45, min(1.25, float(scale)))
         key = (str(form_id), str(state), scale, bool(mirror))
         if key in self._cache:
             return self._cache[key]

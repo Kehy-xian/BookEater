@@ -139,7 +139,10 @@ class DesktopPetWindowV6(DesktopPetWindowV5):
             self._set_pet_scale(float(size_var.get()))
             msg.set('몬스터 크기를 저장했어요. 다음 실행에도 적용됩니다.')
 
-        for value, label in (('1.0', '기본'), ('0.75', '작게'), ('0.5', '아주 작게')):
+        for value, label in (
+            ('1.25', '아주 크게'), ('1.0', '크게'), ('0.75', '기본'),
+            ('0.6', '작게'), ('0.45', '아주 작게'),
+        ):
             ttk.Radiobutton(
                 size_row, text=label, value=value, variable=size_var, command=change_size,
             ).pack(side='left', padx=(0, 8))

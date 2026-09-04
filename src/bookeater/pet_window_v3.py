@@ -24,9 +24,10 @@ class DesktopPetWindowV3(DesktopPetWindowV2):
         ttk.Label(body, text='기억 한 조각', font=('', 18, 'bold')).pack(anchor='w')
         ttk.Label(
             body,
-            text='먹인 독서기록 중 한 조각을 무작위로 다시 보여줘요.',
+            text=f'{self._monster_label()}에게 먹인 기록 중 한 조각을 무작위로 보여줍니다.',
             wraplength=420,
-        ).pack(anchor='w', pady=(3, 4))
+            justify='left',
+        ).pack(anchor='w', pady=(4, 6))
         if moment is None:
             ttk.Label(
                 body,

@@ -39,3 +39,21 @@ def test_greeting_changes_with_bond():
     assert low != high
     assert any(word in low for word in ('천천히', '조용'))
     assert any(word in high for word in ('반가워', '기다리고'))
+
+
+def test_low_bond_lines_are_short_and_high_bond_lines_are_more_expressive():
+    low = {choose_ambient_line('route_a1', 50, bond=0, rng=random.Random(seed)) for seed in range(20)}
+    high = {choose_ambient_line('route_a1', 50, bond=100, rng=random.Random(seed)) for seed in range(20)}
+    assert max(map(len, low)) <= 8
+    assert max(map(len, high)) > max(map(len, low))
+
+
+def test_accumulated_trait_can_shape_dialogue_without_exposing_trait_name():
+    lines = {
+        choose_ambient_line(
+            'route_a1', 40, bond=80, stats={'모험': 20}, rng=random.Random(seed),
+        )
+        for seed in range(80)
+    }
+    assert any('낯선 길' in line for line in lines)
+    assert all('모험' not in line for line in lines)

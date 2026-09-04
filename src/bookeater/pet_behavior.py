@@ -13,7 +13,10 @@ import random
 
 
 AMBIENT_STATES = ('idle', 'walk', 'run', 'sit', 'read', 'sleep', 'talk', 'bump')
-INTERRUPT_STATES = ('eat', 'spit_memory', 'drop', 'snack', 'delicious', 'play', 'wash')
+INTERRUPT_STATES = (
+    'eat', 'spit_memory', 'drop', 'snack', 'delicious', 'play', 'wash',
+    'surprised', 'held', 'landed',
+)
 
 
 @dataclass(frozen=True)
