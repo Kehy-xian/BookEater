@@ -66,11 +66,12 @@ def _decode_atlas(parts: tuple[Path, ...]):
     return image.convert('RGBA')
 
 
-def _issues_for(slug: str, target: Path = SPRITE_DIR, *, states=CORE_STATES):
-    return validate_sprite_pack(target, slug, required_states=tuple(states))
+def _issues_for(slug: str, target: Path | None = None, *, states=CORE_STATES):
+    return validate_sprite_pack(target or SPRITE_DIR, slug, required_states=tuple(states))
 
 
-def _validate(slug: str, target: Path = SPRITE_DIR, *, states=CORE_STATES) -> None:
+def _validate(slug: str, target: Path | None = None, *, states=CORE_STATES) -> None:
+    target = target or SPRITE_DIR
     issues = _issues_for(slug, target, states=states)
     if issues:
         detail = '; '.join(f'{x.code}:{x.path.name}' for x in issues[:8])
@@ -86,41 +87,60 @@ def _existing_core_files(slug: str) -> tuple[Path, ...]:
     return tuple(names)
 
 
+def _packaged_core_states(slug: str) -> tuple[str, ...]:
+    """Return complete hand-authored states and reject partial state replacements."""
+    packaged: list[str] = []
+    if not SPRITE_DIR.is_dir():
+        return ()
+    for state in CORE_STATES:
+        existing = tuple(SPRITE_DIR.glob(f'{slug}_{state}_*.png'))
+        if not existing:
+            continue
+        _validate(slug, states=(state,))
+        packaged.append(state)
+    return tuple(packaged)
+
+
 def expand_paperling() -> str:
+    packaged_states = _packaged_core_states('paperling')
+    if set(packaged_states) == set(CORE_STATES):
+        return 'packaged'
+
     parts = _atlas_parts('paperling')
     atlas = _decode_atlas(parts)
 
-    if atlas is None:
-        existing = _existing_core_files('paperling')
-        if existing:
-            _validate('paperling')
-            return 'packaged'
-        generate_paperling_core_frames(SPRITE_DIR)
-        _validate('paperling')
-        return 'baseline'
-
     with tempfile.TemporaryDirectory(prefix='bookeater-sprites-') as temp:
         staging = Path(temp)
-        for atlas_index, (state, frame_index) in enumerate(PAPERLING_ATLAS_ORDER):
-            col = atlas_index % ATLAS_COLUMNS
-            row = atlas_index // ATLAS_COLUMNS
-            box = (
-                col * SPRITE_WIDTH,
-                row * SPRITE_HEIGHT,
-                (col + 1) * SPRITE_WIDTH,
-                (row + 1) * SPRITE_HEIGHT,
-            )
-            frame = atlas.crop(box)
-            target = staging / frame_filename('paperling', state, frame_index)
-            frame.save(target, format='PNG', optimize=True)
+        if atlas is None:
+            generate_paperling_core_frames(staging)
+            fallback_source = 'baseline'
+        else:
+            fallback_source = 'atlas'
+            for atlas_index, (state, frame_index) in enumerate(PAPERLING_ATLAS_ORDER):
+                col = atlas_index % ATLAS_COLUMNS
+                row = atlas_index // ATLAS_COLUMNS
+                box = (
+                    col * SPRITE_WIDTH,
+                    row * SPRITE_HEIGHT,
+                    (col + 1) * SPRITE_WIDTH,
+                    (row + 1) * SPRITE_HEIGHT,
+                )
+                frame = atlas.crop(box)
+                target = staging / frame_filename('paperling', state, frame_index)
+                frame.save(target, format='PNG', optimize=True)
 
         _validate('paperling', staging)
         SPRITE_DIR.mkdir(parents=True, exist_ok=True)
         for state in CORE_STATES:
+            if state in packaged_states:
+                continue
             for i in range(GEULSSIAL_ANIMATIONS[state].frame_count):
                 name = frame_filename('paperling', state, i)
                 shutil.copy2(staging / name, SPRITE_DIR / name)
-    return 'atlas'
+    _validate('paperling')
+    if packaged_states:
+        return f'packaged-{",".join(packaged_states)}+{fallback_source}'
+    return fallback_source
 
 
 def _ensure_generated(slug: str, generator) -> str:
