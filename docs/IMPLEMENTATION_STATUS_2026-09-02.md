@@ -116,7 +116,8 @@ reliable checklist by itself.
 
 ## Next order
 
-1. Add an isolated lifecycle smoke mode and run the complete Windows birth-to-new-cycle pass.
+1. Run the isolated `--lifecycle-preview` Windows birth-to-new-cycle visual pass; automated
+   `--lifecycle-smoke` persistence coverage is active in package, installer and release CI.
 2. Add explicit local correction/odd-result UX before enabling any improvement-data upload.
 3. Finalize the base/evolution art and major action animation sets when approved assets are ready.
 4. Add approved rear/upward walking frames, then complete multi-monitor/manual Windows playtests.

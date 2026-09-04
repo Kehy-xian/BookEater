@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import sys
+from tempfile import TemporaryDirectory
 
 from bookeater.desktop import run_desktop
 from bookeater.launch_guard import run_guarded
@@ -56,6 +58,17 @@ def _lifecycle_smoke() -> int:
     return 0 if payload.get('ok') else 6
 
 
+def _lifecycle_preview() -> int:
+    """Open the visual lifecycle shortcuts in a disposable profile."""
+    with TemporaryDirectory(prefix='bookeater-lifecycle-preview-') as temp:
+        runtime = bootstrap_runtime(data_dir=Path(temp))
+        runtime.journal.add_book(
+            'lifecycle-book', '생애주기 시험용 책', author='BookEater', status='completed'
+        )
+        DesktopPetWindowV12(runtime, lifecycle_preview=True).run()
+    return 0
+
+
 if __name__ == '__main__':
     if '--smoke' in sys.argv:
         raise SystemExit(_smoke())
@@ -63,6 +76,8 @@ if __name__ == '__main__':
         raise SystemExit(0 if windows_mutex_self_test() else 5)
     if '--lifecycle-smoke' in sys.argv:
         raise SystemExit(_lifecycle_smoke())
+    if '--lifecycle-preview' in sys.argv:
+        raise SystemExit(_lifecycle_preview())
     if '--full-window' in sys.argv:
         raise SystemExit(run_guarded(run_desktop))
     raise SystemExit(run_guarded(run_pet_v12))

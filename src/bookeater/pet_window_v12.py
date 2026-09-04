@@ -14,7 +14,8 @@ from .ui_text_flow import TYPEWRITER_DELAY_MS, typewriter_prefix
 
 
 class DesktopPetWindowV12(DesktopPetWindowV11):
-    def __init__(self, runtime: BookEaterRuntime):
+    def __init__(self, runtime: BookEaterRuntime, *, lifecycle_preview: bool = False):
+        self._lifecycle_preview = bool(lifecycle_preview)
         self._last_presented_form_id = runtime.store.load_state().form_id
         self._ceremony_open = False
         super().__init__(runtime)
@@ -22,16 +23,50 @@ class DesktopPetWindowV12(DesktopPetWindowV11):
     def _rebuild_main_menu(self) -> None:
         super()._rebuild_main_menu()
         state = self.runtime.store.load_state()
-        if get_growth_form(state.form_id).tier < 3:
+        if get_growth_form(state.form_id).tier >= 3:
+            # Insert directly below 휴식하기 and before its following separator.
+            end = self.menu.index('end')
+            if end is not None:
+                for index in range(end + 1):
+                    if self.menu.type(index) == 'command' and self.menu.entrycget(index, 'label') == '휴식하기(트레이 축소)':
+                        self.menu.insert_command(index + 1, label='떠나보내기', command=self._ask_release_monster)
+                        break
+        if self._lifecycle_preview:
+            self.menu.add_separator()
+            self.menu.add_command(
+                label='[테스트] 다음 성장 단계', command=self._preview_next_evolution,
+            )
+            self.menu.add_command(
+                label='[테스트] 나만의 책 열기', command=self._open_memoir_library,
+            )
+
+    def _preview_next_evolution(self) -> None:
+        """Developer-only visual shortcut; unavailable in every ordinary launch."""
+        from tkinter import messagebox
+        from .services.lifecycle_smoke import force_lifecycle_transition
+
+        state = self.runtime.store.load_state()
+        next_form = {
+            'starter': 'route_a',
+            'route_a': 'route_a1',
+            'route_a1': 'route_a1_alpha',
+        }.get(state.form_id)
+        if next_form is None:
+            messagebox.showinfo(
+                '생애주기 테스트',
+                '최종 성장 단계입니다. 떠나보내기 흐름을 확인해 주세요.',
+                parent=self.root,
+            )
             return
-        # Insert directly below 휴식하기 and before its following separator.
-        end = self.menu.index('end')
-        if end is None:
-            return
-        for index in range(end + 1):
-            if self.menu.type(index) == 'command' and self.menu.entrycget(index, 'label') == '휴식하기(트레이 축소)':
-                self.menu.insert_command(index + 1, label='떠나보내기', command=self._ask_release_monster)
-                break
+        count = {1: 20, 2: 40, 3: 60}[get_growth_form(next_form).tier]
+        force_lifecycle_transition(
+            self.runtime,
+            f'preview-{get_growth_form(next_form).tier}',
+            next_form,
+            count,
+        )
+        self._after_feed_processed(None)
+        self._rebuild_main_menu()
 
     def _after_feed_processed(self, outcome) -> None:
         state = self.runtime.store.load_state()

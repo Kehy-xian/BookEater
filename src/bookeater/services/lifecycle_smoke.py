@@ -19,7 +19,8 @@ from bookeater.runtime import bootstrap_runtime, resource_root
 _ROUTE = ('starter', 'route_a', 'route_a1', 'route_a1_alpha')
 
 
-def _consume_as_form(runtime, feed_id: str, target_form: str, entry_count: int) -> None:
+def force_lifecycle_transition(runtime, feed_id: str, target_form: str, entry_count: int) -> None:
+    """Advance one valid route edge for isolated automated or visual lifecycle checks."""
     previous = runtime.store.load_state()
     if not valid_direct_transition(previous.form_id, target_form):
         raise RuntimeError(f'invalid smoke transition: {previous.form_id} -> {target_form}')
@@ -70,7 +71,7 @@ def lifecycle_smoke(*, resources: str | Path | None = None) -> dict[str, Any]:
         )
 
         for index, target in enumerate(_ROUTE[1:], start=1):
-            _consume_as_form(runtime, f'lifecycle-{index}', target, index * 20)
+            force_lifecycle_transition(runtime, f'lifecycle-{index}', target, index * 20)
 
         final_before = runtime.store.load_state()
         runtime.journal.attach_note(

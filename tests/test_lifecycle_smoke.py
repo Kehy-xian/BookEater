@@ -25,3 +25,4 @@ def test_windows_entrypoint_uses_latest_pet_window():
     source = (Path(__file__).resolve().parents[1] / 'bookeater_desktop.py').read_text(encoding='utf-8')
     assert 'from bookeater.pet_window_v12 import run_pet_v12' in source
     assert 'run_guarded(run_pet_v12)' in source
+    assert "if '--lifecycle-preview' in sys.argv:" in source
