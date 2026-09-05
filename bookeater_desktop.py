@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 
 from bookeater.desktop import run_desktop
 from bookeater.launch_guard import run_guarded
-from bookeater.pet_window_v12 import run_pet_v12
+from bookeater.pet_window_v12 import DesktopPetWindowV12, run_pet_v12
 from bookeater.runtime import bootstrap_runtime
 from bookeater.services.catalog import CatalogClient, configured_catalog_client
 from bookeater.services.data_transfer import SEED_FORMAT, SEED_VERSION
